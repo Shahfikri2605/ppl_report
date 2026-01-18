@@ -17,14 +17,20 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 @st.cache_data(ttl=600)
-def load_google_sheet(url):
+def load_google_sheet(url, sheet_name=0):
     try:
         client = get_gspread_client()
         sheet = client.open_by_url(url)
-        worksheet = sheet.get_worksheet(0)
+        # If sheet_name is a string, open by name; else open by index
+        if isinstance(sheet_name, str):
+            worksheet = sheet.worksheet(sheet_name)
+        else:
+            worksheet = sheet.get_worksheet(sheet_name)
+            
         data = worksheet.get_all_values()
         return pd.DataFrame(data)
     except Exception as e:
+        # st.error(f"Error loading {sheet_name}: {e}") # Optional debug
         return None
 
 def write_to_sheet(url, sheet_name, df):
@@ -126,6 +132,11 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'W5': return 'SS WOODLANDS 573E'
         
         return name
+    
+    elif report_type == 'NTUC':
+        name = re.sub(r'^\d+\s*-\s*', '', name)
+        name = name.replace('FPX-', '').strip()
+        return name
 
     return name
 
@@ -214,6 +225,10 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         # Sales: ITEM CODE, OUTLET, QTY, SALES BEF GST
         sales_cols = {'Article': ['ITEM CODE', 'Article'], 'Qty': ['QTY', 'Quantity'], 'Val': ['SALES BEF GST', 'Total Amount', 'Amount'], 'Store': ['OUTLET', 'Store'], 'Date': ['Date', 'TRXDATE'], 'Name': ['DESCRIPTION', 'Name']}
 
+    elif report_type =="NTUC":
+        db_cols = {'Article': ['cno_sku'], 'NAV': ['id'], 'ArtDesc': ['name1'], 'NavDesc': ['name2']}
+        sales_cols = {'Store': ['1st Column'], 'Raw_Item': ['2nd Column']}
+
     # Common Maps
     dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['External Doc No.']}
     waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['Store', 'LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
@@ -224,6 +239,10 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     df_db = find_correct_header_row(df_db_raw,db_cols, "DB Sheet")
     if df_db is None: return None
     df_db = strict_rename(df_db, db_cols)
+
+    if report_type == "NTUC":
+        df_db['NAV'] = df_db['NAV'].astype(str).apply(lambda x: x.split('-')[0] if '-' in x else x)
+
     df_db['Article'] = df_db['Article'].apply(clean_id)
     df_db['NAV'] = df_db['NAV'].apply(clean_id)
     df_db = df_db[df_db['NAV'] != "0"].drop_duplicates('Article')
@@ -240,9 +259,87 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         master_name_map.update(df_db.set_index('NAV')['Final_Name'].to_dict())
 
     # --- B. SALES ---
-    df_sales = find_correct_header_row(df_sales_raw, sales_cols, "Sales Sheet")
-    if df_sales is None: return None
-    df_sales = strict_rename(df_sales, sales_cols)
+    if report_type == "NTUC":
+        id_vars = ['Store', 'Raw_Item']
+        melt_val = pd.DataFrame()
+        melt_qty = pd.DataFrame()
+
+        try:
+            client = get_gspread_client()
+            sales_url = st.session_state['urls']['s'] 
+            sh = client.open_by_url(sales_url)
+
+            # 1. FETCH & PROCESS "Quantity" TAB
+            try:
+                ws_qty = sh.worksheet("Quantity")
+                df_qty_raw = pd.DataFrame(ws_qty.get_all_values())
+                df_qty_clean = find_correct_header_row(df_qty_raw, sales_cols, "Qty Sheet")
+                df_qty_clean = strict_rename(df_qty_clean, sales_cols)
+                
+                # Exclude 'METRIC' column explicitly to avoid data corruption
+                date_cols_q = [c for c in df_qty_clean.columns if c not in id_vars and 'METRIC' not in str(c).upper()]
+                melt_qty = df_qty_clean.melt(id_vars=id_vars, value_vars=date_cols_q, var_name='Date', value_name='Qty')
+            except Exception as e:
+                st.warning(f"Error loading Quantity tab: {e}")
+
+            # 2. FETCH & PROCESS "Sales" TAB (Value)
+            try:
+                try: ws_val = sh.worksheet("Sales") 
+                except: ws_val = sh.get_worksheet(0)
+                
+                df_val_raw = pd.DataFrame(ws_val.get_all_values())
+                df_val_clean = find_correct_header_row(df_val_raw, sales_cols, "Sales Sheet")
+                df_val_clean = strict_rename(df_val_clean, sales_cols) # FIX: Use df_val_clean here
+                
+                # Exclude 'METRIC' column explicitly
+                date_cols_v = [c for c in df_val_clean.columns if c not in id_vars and 'METRIC' not in str(c).upper()]
+                melt_val = df_val_clean.melt(id_vars=id_vars, value_vars=date_cols_v, var_name='Date', value_name='Val')
+            except Exception as e:
+                st.warning(f"Error loading Sales tab: {e}")
+
+        except Exception as e:
+            st.error(f"Critical GSheet Error: {e}")
+            return None
+
+        # 3. Handle Empty Dataframes
+        if melt_val.empty: 
+            st.error("Could not fetch Sales Value data.")
+            return None
+        if melt_qty.empty:
+            melt_qty = melt_val.copy()[id_vars + ['Date']]
+            melt_qty['Qty'] = 0
+
+        # 4. Cleanup & Merge 
+        # Clean currency symbols just in case ($) and convert to numeric
+        melt_val['Val'] = melt_val['Val'].apply(clean_currency)
+        
+        melt_qty['Qty'] = pd.to_numeric(melt_qty['Qty'], errors='coerce').fillna(0)
+        
+        # Standardize Date formats 
+        melt_val['Date'] = pd.to_datetime(melt_val['Date'], dayfirst=True, errors='coerce')
+        melt_qty['Date'] = pd.to_datetime(melt_qty['Date'], dayfirst=True, errors='coerce')
+        
+        # Filter out invalid dates (e.g. if 'Metric' column slipped in)
+        melt_val = melt_val.dropna(subset=['Date'])
+        melt_qty = melt_qty.dropna(subset=['Date'])
+
+        df_sales = pd.merge(melt_val, melt_qty, on=['Store', 'Raw_Item', 'Date'], how='outer').fillna(0)
+
+        # 5. Extract Article Code
+        df_sales['Article'] = df_sales['Raw_Item'].astype(str).str.extract(r'(\d+)\s*$')
+        df_sales['Name'] = df_sales['Raw_Item'].astype(str).str.rsplit('-', n=1).str[0].str.strip()
+
+    else:
+        # Standard Logic (CS / SS)
+        df_sales = find_correct_header_row(df_sales_raw, sales_cols, "Sales Sheet")
+        if df_sales is None: return None
+        df_sales = strict_rename(df_sales, sales_cols)
+
+
+
+    # df_sales = find_correct_header_row(df_sales_raw, sales_cols, "Sales Sheet")
+    # if df_sales is None: return None
+    # df_sales = strict_rename(df_sales, sales_cols)
     
     df_sales['Article'] = df_sales['Article'].apply(clean_id)
     df_sales['NAV'] = df_sales['Article'].map(db_mapping_forward).fillna("0")
@@ -287,9 +384,14 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         elif report_type == 'SS':
             mask = df_dist['Store'].astype(str).str.upper().str.contains(r'SHENG SIONG|^SS |^SS_', regex=True, na=False)
             df_dist=df_dist[mask]
+        elif report_type == 'NTUC':
+            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'NTUC', regex=True, na=False)
+            df_dist = df_dist[mask]
+       
+
     
     if 'Chain' in df_dist.columns and 'Store' not in df_dist.columns:
-         mask_chain = df_dist['Chain'].astype(str).str.upper().str.contains('HCZXOFSGT', na=False)
+         mask_chain = df_dist['Chain'].astype(str).str.upper().str.contains('HX', na=False)
          if mask_chain.sum() > 0: df_dist = df_dist[mask_chain]
     
     df_dist['NAV'] = df_dist['NAV'].apply(clean_id)
@@ -327,6 +429,10 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         elif report_type == 'SS':
             mask = df_waste['Chain'].astype(str).str.upper().str.contains(r'^SHENG SHIONG|^SS|^SS_|S.SIONG', regex=True, na=False)
             df_waste = df_waste[mask]
+        elif report_type == 'NTUC':
+            mask = df_waste['Chain'].astype(str).str.upper().str.contains('NTUC', regex=True, na=False)
+            df_waste = df_waste[mask]
+            
 
     df_waste['NAV'] = df_waste['NAV'].apply(clean_id)
     df_waste['Store'] = df_waste['Store'].apply(lambda x: normalize_store_name(x, report_type))
@@ -348,27 +454,30 @@ st.sidebar.header("⚙️ Configuration")
 if 'urls' not in st.session_state:
     st.session_state['urls'] =None 
 
+def make_url(sheet_id):
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
+
 button_col1, button_col2= st.sidebar.columns(2)
 with button_col1:
     if st.button("CS FRESH PPL REPORT"):
         st.session_state['report_type'] = "CS"
         st.session_state['urls'] ={
-            's': "https://docs.google.com/spreadsheets/d/1f1So8opG2JcWvxLgRYxafBPKScprj-XN7RRVGc_maTI/edit",
-            'db': "https://docs.google.com/spreadsheets/d/1QmpnsD7J52ZHq-_qClsNPHfRE3fVtmo0G5lsAKthGXs/edit",
-            'd': "https://docs.google.com/spreadsheets/d/18b7zzJApuKXmrzAdVAcwWia1ddYnm2_lzLiDh8FYHUg/edit",
-            'w': "https://docs.google.com/spreadsheets/d/11NGVJcw1DnVKBn7prL1ecvQk5swV74DCUmNOybN9Fjk/edit",
-            'h': "https://docs.google.com/spreadsheets/d/1pF1-Wx6Z4LkRe2EJ9i-9d29lwBAeJoS3ellduCAKm4I/edit"
+            's':  make_url(st.secrets["sheet_ids"]["cs_sales"]),
+            'db': make_url(st.secrets["sheet_ids"]["cs_db"]),
+            'd':  make_url(st.secrets["sheet_ids"]["cs_dist"]),
+            'w':  make_url(st.secrets["sheet_ids"]["cs_waste"]),
+            'h':  make_url(st.secrets["sheet_ids"]["cs_history"])
         }
         st.rerun()
 with button_col2:
     if st.button("SS FRESH PPL REPORT"):
         st.session_state['report_type'] = "SS"
         st.session_state['urls'] = {
-            's':"https://docs.google.com/spreadsheets/d/1mYZ5Z-b7BDdAzsalff3Xb4MtVipgG8V1Kr6KOF5GUOo/edit",
-            'db':"https://docs.google.com/spreadsheets/d/1h58TzZyKfRCYrbdhN9wJYRw5OnoYHJKoPtfjoLacoAM/edit",
-            'd': "https://docs.google.com/spreadsheets/d/18b7zzJApuKXmrzAdVAcwWia1ddYnm2_lzLiDh8FYHUg/edit",
-            'w': "https://docs.google.com/spreadsheets/d/11NGVJcw1DnVKBn7prL1ecvQk5swV74DCUmNOybN9Fjk/edit",
-            'h':"https://docs.google.com/spreadsheets/d/1RiwIeUFGDq4i1Wj-MrrimUBpi7R9oxvDKGsQ_9AviEM/edit"
+            's':  make_url(st.secrets["sheet_ids"]["ss_sales"]),
+            'db': make_url(st.secrets["sheet_ids"]["ss_db"]),
+            'd':  make_url(st.secrets["sheet_ids"]["ss_dist"]),
+            'w':  make_url(st.secrets["sheet_ids"]["ss_waste"]),
+            'h':  make_url(st.secrets["sheet_ids"]["ss_history"])
 
         }
         st.rerun()
@@ -378,11 +487,11 @@ with button_col3:
     if st.button("NTUC FRESH PPL REPORT"):
         st.session_state['report_type'] = "NTUC"
         st.session_state['urls'] ={
-            's': "https://docs.google.com/spreadsheets/d/1f1So8opG2JcWvxLgRYxafBPKScprj-XN7RRVGc_maTI/edit",
-            'db': "https://docs.google.com/spreadsheets/d/1QmpnsD7J52ZHq-_qClsNPHfRE3fVtmo0G5lsAKthGXs/edit",
-            'd': "https://docs.google.com/spreadsheets/d/18b7zzJApuKXmrzAdVAcwWia1ddYnm2_lzLiDh8FYHUg/edit",
-            'w': "https://docs.google.com/spreadsheets/d/11NGVJcw1DnVKBn7prL1ecvQk5swV74DCUmNOybN9Fjk/edit",
-            'h': "https://docs.google.com/spreadsheets/d/1pF1-Wx6Z4LkRe2EJ9i-9d29lwBAeJoS3ellduCAKm4I/edit"
+            's':  make_url(st.secrets["sheet_ids"]["ntuc_sales"]),
+            'db': make_url(st.secrets["sheet_ids"]["ntuc_db"]),
+            'd':  make_url(st.secrets["sheet_ids"]["ntuc_dist"]),
+            'w':  make_url(st.secrets["sheet_ids"]["ntuc_waste"]),
+            'h':  make_url(st.secrets["sheet_ids"]["ntuc_history"])
         }
         st.rerun()
         
@@ -440,27 +549,34 @@ if app_mode == "📡 Live Analysis":
                 # Filter
                 ft = st.sidebar.radio("Filter:", ["Month", "Week"])
                 if ft == "Month":
-                    opts = sorted(list(set(df_s['Month']) | set(df_d['Month'])))
-                    sel = st.sidebar.multiselect("Select", opts, default=opts[-2:] if len(opts)>1 else opts)
+                    group_col = "Month"
+                    month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                    opts = sorted(list(set(df_s['Month']) | set(df_d['Month']) | set(df_w['Month'])), key=lambda x: month_order.index(x) if x in month_order else 99)
+                    if opts:
+                        default_opts = opts[-2:] if len(opts) > 1 else opts
+                    else:
+                        default_opts = []
+                    sel = st.sidebar.multiselect("Select", opts, default=default_opts)
                     if sel:
                         df_s = df_s[df_s['Month'].isin(sel)]
                         df_d = df_d[df_d['Month'].isin(sel)]
                         df_w = df_w[df_w['Month'].isin(sel)]
                 else:
+                    group_col = "Week" # Dynamic grouping variable
                     opts = sorted(list(set(df_s['Week']) | set(df_d['Week'])), reverse=True)
-                    sel = st.sidebar.multiselect("Select", opts)
+                    sel = st.sidebar.multiselect("Select", opts, default=opts[:4] if len(opts)>0 else opts) # Default to last 4 weeks
                     if sel:
                         df_s = df_s[df_s['Week'].isin(sel)]
                         df_d = df_d[df_d['Week'].isin(sel)]
                         df_w = df_w[df_w['Week'].isin(sel)]
 
                 # Calculation
-                s_grp = df_s.groupby(['Month','Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Sales_Qty', 'Val': 'Sales_Val'})
-                d_grp = df_d.groupby(['Month','Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Dist_Qty', 'Val': 'Dist_Val'})
-                w_grp = df_w.groupby(['Month','Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Waste_Qty', 'Val': 'Waste_Val'})
+                s_grp = df_s.groupby([group_col,'Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Sales_Qty', 'Val': 'Sales_Val'})
+                d_grp = df_d.groupby([group_col,'Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Dist_Qty', 'Val': 'Dist_Val'})
+                w_grp = df_w.groupby([group_col,'Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Waste_Qty', 'Val': 'Waste_Val'})
 
-                df = pd.merge(d_grp, s_grp, on=['Month','Store', 'NAV'], how='outer')
-                df = pd.merge(df, w_grp, on=['Month','Store', 'NAV'], how='outer').fillna(0)
+                df = pd.merge(d_grp, s_grp, on=[group_col,'Store', 'NAV'], how='outer')
+                df = pd.merge(df, w_grp, on=[group_col,'Store', 'NAV'], how='outer').fillna(0)
                 
                 df['Article_Code'] = df['NAV'].map(map_art).fillna("0")
                 df.loc[df['Article_Code'] == "0", 'Article_Code'] = "Unmapped (NAV " + df['NAV'].astype(str) + ")"
@@ -472,76 +588,59 @@ if app_mode == "📡 Live Analysis":
                 df['Balance_Qty'] = df['Dist_Qty'] - df['Sales_Qty'] - df['Waste_Qty']
 
                 # Views
-                v_s_qty = df.groupby(['Month','Store'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty']].sum()
-                v_s_val = df.groupby(['Month','Store'])[['Dist_Val', 'Sales_Val', 'Waste_Val','Profit']].sum()
-                v_i_qty = df.groupby(['Month','Article_Code', 'Item_Name'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum().sort_values('Dist_Qty', ascending=False)
-                v_i_val = df.groupby(['Month','Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val']].sum().sort_values('Dist_Val', ascending=False)
-                v_top10_all = df.groupby(['Month', 'Item_Name'])['Sales_Val'].sum().reset_index()
+                v_s_qty = df.groupby([group_col,'Store'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty']].sum()
+                v_s_val = df.groupby([group_col,'Store'])[['Dist_Val', 'Sales_Val', 'Waste_Val','Profit']].sum()
+                v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum().sort_values('Dist_Qty', ascending=False)
+                v_i_val = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val']].sum().sort_values('Dist_Val', ascending=False)
+                v_top10_all = df.groupby([group_col, 'Item_Name'])['Sales_Val'].sum().reset_index()
 
 
 
                 st.subheader(f"📊 {rpt} Live Report ({sel_year}-{ft})")
                 t1, t2, t3, t4, t5 = st.tabs(["📦 QTY (Store)", "💰 $ (Store)", "📦 QTY (Item)", "💰 $ (Item)", "🏆 Top 10"])
 
-                month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                sorted_months = sorted([m for m in sel], key=lambda x: month_order.index(x) if x in month_order else 99)
-
-                
-                def display_drilldown(tab, main_df, detail_cols, sort_col, fmt):
+                def display_drilldown(tab, main_df, detail_cols, sort_col, fmt, time_col):
                     with tab:
                         if main_df.empty:
                             st.info("No data.")
                             return
-                        
                         # 1. Store Summary
-                        summary = main_df.unstack(level='Month', fill_value=0)
-                        
+                        summary = main_df.unstack(level=0, fill_value=0)
                         # Calculate Totals
                         metrics = summary.columns.get_level_values(0).unique()
                         for m in metrics:
                             m_cols = summary.loc[:, (m, slice(None))].columns
-                            for c in m_cols: summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
+                            for c in m_cols:
+                                summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
                             summary[(m, 'TOTAL')] = summary[m_cols].sum(axis=1)
-
                         if (sort_col, 'TOTAL') in summary.columns:
                             summary = summary.sort_values((sort_col, 'TOTAL'), ascending=False)
-                        
                         st.markdown(f"### 🏢 Store Summary")
-                        # Use data_editor or dataframe with height to make scrolling fast
                         st.dataframe(summary.style.format(fmt), height=400, use_container_width=True)
-                        
                         st.divider()
-                        
                         # 2. FAST DRILL-DOWN (Selectbox instead of Loop)
                         st.markdown("### 🔍 Select Store to View Details")
-                        # Create list of stores with totals for the dropdown
                         store_options = []
                         for store in summary.index:
                             val = summary.loc[store, (sort_col, 'TOTAL')]
                             store_options.append(f"{store} | Total {sort_col}: {val:,.2f}")
-                        
                         sel_store_str = st.selectbox(f"Select Store ({sort_col})", options=store_options, key=f"sel_{sort_col}")
-                        
                         if sel_store_str:
-                            # Extract real store name from the dropdown string
                             selected_store = sel_store_str.split(" | ")[0]
-                            
-                            # Filter Data (Efficiently)
-                            # We only calculate details for the ONE selected store
                             store_mask = df['Store'] == selected_store
-                            detail_view = df[store_mask].groupby(['Item_Name', 'Month'])[detail_cols].sum().unstack(level='Month', fill_value=0)
-                            
-                            # Calculate Totals for the detail view
+                            # Check if time_col in df columns for groupby
+                            if time_col not in df.columns:
+                                st.warning(f"Cannot drill down: '{time_col}' not found in data columns.")
+                                return
+                            detail_view = df[store_mask].groupby(['Item_Name', time_col])[detail_cols].sum().unstack(level=1, fill_value=0)
                             d_metrics = detail_view.columns.get_level_values(0).unique()
                             for m in d_metrics:
                                 m_cols = detail_view.loc[:, (m, slice(None))].columns
-                                for c in m_cols: detail_view[c] = pd.to_numeric(detail_view[c], errors='coerce').fillna(0)
+                                for c in m_cols:
+                                    detail_view[c] = pd.to_numeric(detail_view[c], errors='coerce').fillna(0)
                                 detail_view[(m, 'TOTAL')] = detail_view[m_cols].sum(axis=1)
-                            
-                            # Sort
                             if (sort_col, 'TOTAL') in detail_view.columns:
                                 detail_view = detail_view.sort_values((sort_col, 'TOTAL'), ascending=False)
-                                
                             st.markdown(f"#### 📦 Items in {selected_store}")
                             st.dataframe(detail_view.sort_index(axis=1).style.format(fmt), width='stretch')
 
@@ -554,7 +653,7 @@ if app_mode == "📡 Live Analysis":
                     v_s_qty, 
                     ['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty'], # Columns to show in detail
                     'Sales_Qty', # Column to sort by
-                    "{:,.2f}"
+                    "{:,.2f}",group_col
                 ) 
 
                 # Tab 2: Store Val (Drilldown shows Dist, Sales, Waste)
@@ -563,69 +662,58 @@ if app_mode == "📡 Live Analysis":
                     v_s_val, 
                     ['Dist_Val', 'Sales_Val', 'Waste_Val'], # Columns to show in detail
                     'Sales_Val', # Column to sort by
-                    "${:,.2f}"
+                    "${:,.2f}",group_col
                 )
-                def display_item_drilldown(tab, detail_cols, sort_col, fmt):
+                def display_item_drilldown(tab, detail_cols, sort_col, fmt, time_col):
                     with tab:
-                        # 1. Item Summary
-                        summary = df.groupby(['Item_Name', 'Month'])[detail_cols].sum().unstack(level='Month', fill_value=0)
                         
+                        summary = df.groupby(['Item_Name', time_col])[detail_cols].sum().unstack(level=1, fill_value=0)
                         if summary.empty:
                             st.info("No data.")
                             return
-
                         # Calculate Totals
                         metrics = summary.columns.get_level_values(0).unique()
                         for m in metrics:
                             m_cols = summary.loc[:, (m, slice(None))].columns
-                            for c in m_cols: summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
+                            for c in m_cols:
+                                summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
                             summary[(m, 'TOTAL')] = summary[m_cols].sum(axis=1)
-
                         if (sort_col, 'TOTAL') in summary.columns:
                             summary = summary.sort_values((sort_col, 'TOTAL'), ascending=False)
-
                         st.markdown(f"### 📦 Item Summary")
                         st.dataframe(summary.style.format(fmt), height=400, use_container_width=True)
-                        
                         st.divider()
-                        
                         # 2. FAST DRILL-DOWN
                         st.markdown("### 🔍 Select Item to View Stores")
-                        
-                        # Optimization: Only take top 2000 items if list is huge to prevent dropdown lag
                         limit_list = summary.index[:2000]
                         item_options = []
                         for item in limit_list:
                             val = summary.loc[item, (sort_col, 'TOTAL')]
                             item_options.append(f"{item} | Total {sort_col}: {val:,.2f}")
-
                         sel_item_str = st.selectbox(f"Select Item ({sort_col})", options=item_options, key=f"sel_item_{sort_col}")
-
                         if sel_item_str:
                             selected_item = sel_item_str.split(" | ")[0]
-                            
-                            # Filter Data for ONE item
                             item_mask = df['Item_Name'] == selected_item
-                            item_view = df[item_mask].groupby(['Store', 'Month'])[detail_cols].sum().unstack(level='Month', fill_value=0)
-                            
-                            # Calculate Totals
+                            if time_col not in df.columns:
+                                st.warning(f"Cannot drill down: '{time_col}' not found in data columns.")
+                                return
+                            item_view = df[item_mask].groupby(['Store', time_col])[detail_cols].sum().unstack(level=1, fill_value=0)
                             d_metrics = item_view.columns.get_level_values(0).unique()
                             for m in d_metrics:
                                 m_cols = item_view.loc[:, (m, slice(None))].columns
-                                for c in m_cols: item_view[c] = pd.to_numeric(item_view[c], errors='coerce').fillna(0)
+                                for c in m_cols:
+                                    item_view[c] = pd.to_numeric(item_view[c], errors='coerce').fillna(0)
                                 item_view[(m, 'TOTAL')] = item_view[m_cols].sum(axis=1)
-                            
                             if (sort_col, 'TOTAL') in item_view.columns:
                                 item_view = item_view.sort_values((sort_col, 'TOTAL'), ascending=False)
-
                             st.markdown(f"#### 📍 Stores selling {selected_item}")
                             st.dataframe(item_view.sort_index(axis=1).style.format(fmt), width='stretch')
 
                 # Tab 3 & 4: Item Views (Keep as simple Pivot)
-                def display_simple_pivot(tab, df_in, fmt):
+                def display_simple_pivot(tab, df_in, fmt,time_col):
                     with tab:
                         try:
-                            p = df_in.unstack(level='Month', fill_value=0)
+                            p = df_in.unstack(level=time_col, fill_value=0)
                             p['Total'] = p.sum(axis=1)
                             p = p.sort_values('Total', ascending=False).drop(columns=['Total'])
                             st.dataframe(p.style.format(fmt))
@@ -638,14 +726,14 @@ if app_mode == "📡 Live Analysis":
                 display_item_drilldown(
                     t3, 
                     ['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty'], 
-                    'Sales_Qty', "{:,.2f}"
+                    'Sales_Qty', "{:,.2f}",group_col
                 )
 
                 # Tab 4: Item Val (Item -> Stores) - NEW LOGIC
                 display_item_drilldown(
                     t4, 
                     ['Dist_Val', 'Sales_Val', 'Waste_Val'], 
-                    'Sales_Val', "${:,.2f}"
+                    'Sales_Val', "${:,.2f}",group_col
                 )
 
                 with t5:
@@ -653,10 +741,10 @@ if app_mode == "📡 Live Analysis":
                        
                         top10_grp = v_top10_all.groupby('Item_Name')['Sales_Val'].sum()
                         top10_items = top10_grp.nlargest(10).index.tolist()
-                        top10_df = v_top10_all[v_top10_all['Item_Name'].isin(top10_items)].set_index(['Month', 'Item_Name'])
+                        top10_df = v_top10_all[v_top10_all['Item_Name'].isin(top10_items)].set_index([group_col, 'Item_Name'])
                         
                         try:
-                            t10_pivot = top10_df.unstack(level='Month', fill_value=0)
+                            t10_pivot = top10_df.unstack(level=0, fill_value=0)
                             t10_pivot[('Sales_Val', 'TOTAL')] = t10_pivot['Sales_Val'].sum(axis=1)
                             t10_pivot = t10_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=False)
                             st.dataframe(t10_pivot.style.format("${:,.2f}"))
