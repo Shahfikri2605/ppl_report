@@ -784,15 +784,21 @@ elif app_mode == "🗄️ Saved Reports":
                     sh = client.open_by_url(urls['h'])
                     def get_tab(s):
                         try:
-                            d = pd.DataFrame(sh.worksheet(f"Rep_{sel}_{s}").get_all_values())
-                            d.columns = d.iloc[0]
-                            return d[1:]
-                        except: return pd.DataFrame()
-                    
+                            data = sh.worksheet(f"Rep_{sel}_{s}").get_all_values()
+                            if not data:
+                                return pd.DataFrame()
+                            header = data [0]
+                            rows= data[1:]
+
+                            d=pd.DataFrame(rows,columns=header)
+                            return d
+                        except Exception as e:
+                            return pd.DataFrame()
+                           
                     t1, t2, t3, t4, t5, t6 = st.tabs(["Store Qty", "Store Val", "Item Qty", "Item Val", "Top 10", "Master Data"])
-                    with t1: st.dataframe(get_tab("StoreQty"))
-                    with t2: st.dataframe(get_tab("StoreVal"))
-                    with t3: st.dataframe(get_tab("ItemQty"))
-                    with t4: st.dataframe(get_tab("ItemVal"))
-                    with t5: st.dataframe(get_tab("Top10"))
-                    with t6: st.dataframe(get_tab("Master"))
+                    with t1: st.dataframe(get_tab("StoreQty"), use_container_width=True)
+                    with t2: st.dataframe(get_tab("StoreVal"), use_container_width=True)
+                    with t3: st.dataframe(get_tab("ItemQty"), use_container_width=True)
+                    with t4: st.dataframe(get_tab("ItemVal"), use_container_width=True)
+                    with t5: st.dataframe(get_tab("Top10"), use_container_width=True)
+                    with t6: st.dataframe(get_tab("Master"), use_container_width=True)
