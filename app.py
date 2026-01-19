@@ -5,7 +5,7 @@ import io
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-st.set_page_config(page_title="Fresh PPL Report System", layout="wide")
+st.set_page_config(page_title="Fresh PPL Report System", layout="wide",page_icon="📊")
 st.title("📊 Fresh PPL Report System")
 st.info("ℹ️ Cloud System: Upload Dist/Waste once. Auto-updates from Sales/DB. Save full report history.")
 
@@ -497,7 +497,7 @@ with button_col3:
         
 
 if st.session_state['urls'] is None:
-    st.info("👈 👈 Please select a Report System (CS or SS) to start.")
+    st.info("👈 👈 Please select a Report System (CS , SS or NTUC) to start.")
     st.stop()
 
 urls = st.session_state['urls']
@@ -642,7 +642,7 @@ if app_mode == "📡 Live Analysis":
                             if (sort_col, 'TOTAL') in detail_view.columns:
                                 detail_view = detail_view.sort_values((sort_col, 'TOTAL'), ascending=False)
                             st.markdown(f"#### 📦 Items in {selected_store}")
-                            st.dataframe(detail_view.sort_index(axis=1).style.format(fmt), width='stretch')
+                            st.dataframe(detail_view.style.format(fmt), width='stretch')
 
 
                 # --- CALLING THE FUNCTIONS ---
@@ -662,7 +662,7 @@ if app_mode == "📡 Live Analysis":
                     v_s_val, 
                     ['Dist_Val', 'Sales_Val', 'Waste_Val'], # Columns to show in detail
                     'Sales_Val', # Column to sort by
-                    "${:,.2f}",group_col
+                    "{:,.2f}",group_col
                 )
                 def display_item_drilldown(tab, detail_cols, sort_col, fmt, time_col):
                     with tab:
@@ -733,7 +733,7 @@ if app_mode == "📡 Live Analysis":
                 display_item_drilldown(
                     t4, 
                     ['Dist_Val', 'Sales_Val', 'Waste_Val'], 
-                    'Sales_Val', "${:,.2f}",group_col
+                    'Sales_Val', "{:,.2f}",group_col
                 )
 
                 with t5:
@@ -742,6 +742,8 @@ if app_mode == "📡 Live Analysis":
                         top10_grp = v_top10_all.groupby('Item_Name')['Sales_Val'].sum()
                         top10_items = top10_grp.nlargest(10).index.tolist()
                         top10_df = v_top10_all[v_top10_all['Item_Name'].isin(top10_items)].set_index([group_col, 'Item_Name'])
+                        v_top10 = df.groupby('Item_Name')['Sales_Val'].sum().sort_values(ascending=False).head(10).reset_index()
+
                         
                         try:
                             t10_pivot = top10_df.unstack(level=0, fill_value=0)
@@ -766,7 +768,7 @@ if app_mode == "📡 Live Analysis":
                             write_to_sheet(urls['h'], f"Rep_{rep_name}_StoreVal", v_s_val)
                             write_to_sheet(urls['h'], f"Rep_{rep_name}_ItemQty", v_i_qty)
                             write_to_sheet(urls['h'], f"Rep_{rep_name}_ItemVal", v_i_val)
-                            write_to_sheet(urls['h'], f"Rep_{rep_name}_Top10", v_top10_all)
+                            write_to_sheet(urls['h'], f"Rep_{rep_name}_Top10", v_top10)
                             write_to_sheet(urls['h'], f"Rep_{rep_name}_Master", df)
                             st.success("✅ Saved!")
                     else: st.error("Need URL & Name")
