@@ -777,27 +777,69 @@ elif app_mode == "🗄️ Saved Reports":
         reps = get_saved_reports(urls['h'])
         if reps:
             sel = st.selectbox("Select Report:", reps)
+            
             if sel:
-                with st.spinner("Loading..."):
-                    client = get_gspread_client()
-                    sh = client.open_by_url(urls['h'])
-                    def get_tab(s):
-                        try:
-                            data = sh.worksheet(f"Rep_{sel}_{s}").get_all_values()
-                            if not data:
-                                return pd.DataFrame()
-                            header = data [0]
-                            rows= data[1:]
+                # 1. LOAD DATA FIRST (Inside Spinner)
+                loaded_data = {}
+                sheet_tabs = ["StoreQty", "StoreVal", "ItemQty", "ItemVal", "Top10", "Master"]
+                
+                with st.spinner("Downloading Report Data..."):
+                    try:
+                        client = get_gspread_client()
+                        sh = client.open_by_url(urls['h'])
+                        
+                        # Pre-fetch all necessary tabs to avoid UI lag later
+                        for tab_name in sheet_tabs:
+                            try:
+                                full_data = sh.worksheet(f"Rep_{sel}_{tab_name}").get_all_values()
+                                if full_data:
+                                    header = full_data[0]
+                                    rows = full_data[1:]
+                                    loaded_data[tab_name] = pd.DataFrame(rows, columns=header)
+                                else:
+                                    loaded_data[tab_name] = pd.DataFrame()
+                            except:
+                                loaded_data[tab_name] = pd.DataFrame()
+                                
+                    except Exception as e:
+                        st.error(f"Connection Error: {e}")
+                        st.stop()
 
-                            d=pd.DataFrame(rows,columns=header)
-                            return d
-                        except Exception as e:
-                            return pd.DataFrame()
-                           
-                    t1, t2, t3, t4, t5, t6 = st.tabs(["Store Qty", "Store Val", "Item Qty", "Item Val", "Top 10", "Master Data"])
-                    with t1: st.dataframe(get_tab("StoreQty"), use_container_width=True)
-                    with t2: st.dataframe(get_tab("StoreVal"), use_container_width=True)
-                    with t3: st.dataframe(get_tab("ItemQty"), use_container_width=True)
-                    with t4: st.dataframe(get_tab("ItemVal"), use_container_width=True)
-                    with t5: st.dataframe(get_tab("Top10"), use_container_width=True)
-                    with t6: st.dataframe(get_tab("Master"), use_container_width=True)
+                # 2. RENDER UI (Outside Spinner - Prevents White Screen Error)
+                if loaded_data:
+                    # Create Tabs
+                    t1, t2, t3, t4, t5, t6 = st.tabs([
+                        "📦 Store Qty", 
+                        "💰 Store Val", 
+                        "📦 Item Qty", 
+                        "💰 Item Val", 
+                        "🏆 Top 10", 
+                        "📝 Master Data"
+                    ])
+
+                    # Render Dataframes safely
+                    with t1: 
+                        st.dataframe(loaded_data.get("StoreQty", pd.DataFrame()), use_container_width=True)
+                    
+                    with t2: 
+                        st.dataframe(loaded_data.get("StoreVal", pd.DataFrame()), use_container_width=True)
+                    
+                    with t3: 
+                        st.dataframe(loaded_data.get("ItemQty", pd.DataFrame()), use_container_width=True)
+                    
+                    with t4: 
+                        st.dataframe(loaded_data.get("ItemVal", pd.DataFrame()), use_container_width=True)
+                    
+                    with t5: 
+                        df_top = loaded_data.get("Top10", pd.DataFrame())
+                        st.dataframe(df_top, use_container_width=True)
+                        # Try to render chart if data exists
+                        if not df_top.empty and 'Total Sales' in df_top.columns:
+                            try:
+                                # Ensure numeric for chart
+                                df_top['Total Sales'] = pd.to_numeric(df_top['Total Sales'], errors='coerce')
+                                st.bar_chart(df_top.set_index(df_top.columns[0])['Total Sales'])
+                            except: pass
+
+                    with t6: 
+                        st.dataframe(loaded_data.get("Master", pd.DataFrame()), use_container_width=True)
