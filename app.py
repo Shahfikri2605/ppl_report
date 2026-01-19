@@ -58,7 +58,7 @@ def write_to_sheet(url, sheet_name, df):
         return False
 
 def get_saved_reports(url):
-    try:
+    
         client = get_gspread_client()
         sh = client.open_by_url(url)
         titles = [ws.title for ws in sh.worksheets()]
@@ -68,8 +68,7 @@ def get_saved_reports(url):
                 parts = t.split('_') 
                 if len(parts) >= 2: reports.add(parts[1])
         return sorted(list(reports), reverse=True)
-    except:
-        return []
+   
 
 # --- 2. HELPER FUNCTIONS (Strictly from your code) ---
 def normalize_store_name(name, report_type='CS'):
