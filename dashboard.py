@@ -1,6 +1,8 @@
+import numpy as np
 import streamlit as st
 import pandas as pd
 import re
+import numpy as np
 import gspread
 import io
 from oauth2client.service_account import ServiceAccountCredentials
@@ -170,12 +172,25 @@ def clean_id(val):
 def clean_currency(val):
     if pd.isna(val) or str(val).strip() == "": return 0.0
     s = str(val).strip().replace('$', '').replace(' ', '')
-    if ',' in s and '.' not in s: s = s.replace(',', '.')
-    elif ',' in s and '.' in s:
-        if s.rfind(',') > s.rfind('.'): s = s.replace('.', '').replace(',', '.') 
-        else: s = s.replace(',', '') 
-    try: return float(s)
-    except: return 0.0
+    
+    if s.endswith(",000"):
+        s = s[:-4]
+        if s.count('.') > 1:
+            s = s.replace('.', '')
+        return float(s)
+    
+    if ',' in s and '.' not in s:
+        s = s.replace(',', '.')
+        return float(s)
+
+    if ',' in s and '.' in s:
+        if s.rfind(',') < s.rfind('.'):
+            s = s.replace(',', '')
+        else:
+            s = s.replace('.', '').replace(',', '.')
+
+    try:return float(s)
+    except: return 0.0 
 
 def parse_uom_factor(uom_str):
     if pd.isna(uom_str): return 1.0
@@ -708,19 +723,25 @@ def main_app_interface(authenticator, name, permissions):
                     mask_unknown = df['Item_Name'] == "Unknown Item"
                     df.loc[mask_unknown, 'Item_Name'] = "Item " + df.loc[mask_unknown, 'NAV'].astype(str)
                     df['Profit'] = df['Sales_Val'] - df['Dist_Val']
-                    df['Balance_Qty'] = df['Dist_Qty'] - df['Sales_Qty'] - df['Waste_Qty']
+                    # df['Balance_Qty'] = df['Dist_Qty'] - df['Sales_Qty'] - df['Waste_Qty']
+                    
+                   
 
                     # Views
-                    v_s_qty = df.groupby([group_col,'Store'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty']].sum()
+                    v_s_qty = df.groupby([group_col,'Store'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum()
+                    v_s_qty['STR%'] = (v_s_qty['Sales_Qty']/ v_s_qty['Dist_Qty'])*100
+                    v_s_qty['STR%'] = v_s_qty['STR%'].replace([np.inf, -np.inf], 0).fillna(0)
                     v_s_val = df.groupby([group_col,'Store'])[['Dist_Val', 'Sales_Val', 'Waste_Val','Profit']].sum()
-                    v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum().sort_values('Dist_Qty', ascending=False)
+                    v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum()
+                    v_i_qty['STR%'] = (v_i_qty['Sales_Qty'] / v_i_qty['Dist_Qty'] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2)
+                    v_i_qty = v_i_qty.sort_values('Dist_Qty', ascending=False)
                     v_i_val = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val']].sum().sort_values('Dist_Val', ascending=False)
                     v_top10_all = df.groupby([group_col, 'Item_Name'])['Sales_Val'].sum().reset_index()
 
 
 
                     st.subheader(f"📊 {rpt} Live Report ({sel_year}-{ft})")
-                    t1, t2, t3, t4, t5 = st.tabs(["📦 QTY (Store)", "💰 $ (Store)", "📦 QTY (Item)", "💰 $ (Item)", "🏆 Top 10"])
+                    t1, t2, t3, t4, t5, t6 = st.tabs(["📦 QTY (Store)", "💰 $ (Store)", "📦 QTY (Item)", "💰 $ (Item)", "🏆 Top 10", "📉 Bottom 10"])
 
                     def display_drilldown(tab, main_df, detail_cols, sort_col, fmt, time_col):
                         with tab:
@@ -772,7 +793,7 @@ def main_app_interface(authenticator, name, permissions):
                     display_drilldown(
                         t1, 
                         v_s_qty, 
-                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty'], # Columns to show in detail
+                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty'], # Columns to show in detail
                         'Sales_Qty', # Column to sort by
                         "{:,.2f}",group_col
                     ) 
@@ -799,6 +820,12 @@ def main_app_interface(authenticator, name, permissions):
                                 for c in m_cols:
                                     summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
                                 summary[(m, 'TOTAL')] = summary[m_cols].sum(axis=1)
+
+                            if 'Sales_Qty' in metrics and 'Dist_Qty' in metrics:
+                                sales_total = summary[('Sales_Qty', 'TOTAL')]
+                                dist_total =summary[('Dist_Qty','TOTAL')]
+                                str_vals = (sales_total/dist_total * 100).replace([float('inf'), -float('inf')], 0)
+                                summary[('STR%', 'TOTAL')] = str_vals.round(2)
                             if (sort_col, 'TOTAL') in summary.columns:
                                 summary = summary.sort_values((sort_col, 'TOTAL'), ascending=False)
                             st.markdown(f"### 📦 Item Summary")
@@ -846,7 +873,7 @@ def main_app_interface(authenticator, name, permissions):
 
                     display_item_drilldown(
                         t3, 
-                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty', 'Balance_Qty'], 
+                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty'], 
                         'Sales_Qty', "{:,.2f}",group_col
                     )
 
@@ -870,7 +897,7 @@ def main_app_interface(authenticator, name, permissions):
                                 t10_pivot = top10_df.unstack(level=0, fill_value=0)
                                 t10_pivot[('Sales_Val', 'TOTAL')] = t10_pivot['Sales_Val'].sum(axis=1)
                                 t10_pivot = t10_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=False)
-                                st.dataframe(t10_pivot.style.format("${:,.2f}"))
+                                st.dataframe(t10_pivot.style.format("{:,.2f}"))
                                 chart_data = t10_pivot[('Sales_Val', 'TOTAL')].rename("Total Sales")
                                 st.bar_chart(chart_data)
                                 
@@ -878,7 +905,30 @@ def main_app_interface(authenticator, name, permissions):
                                 st.error(f"Error in Top 10: {e}")
                         else:
                             st.info("No Sales Data available for Top 10.")
-
+                    
+                    with t6:
+                        valid_items_df = v_top10_all[
+                            (~v_top10_all['Item_Name'].str.startswith('Item ')) & 
+                            (v_top10_all['Item_Name'] != 'Unknown Item')
+                        ]
+                        
+                        if not valid_items_df.empty:
+                            bottom10_grp = valid_items_df.groupby('Item_Name')['Sales_Val'].sum()
+                            bottom10_items = bottom10_grp.nsmallest(10).index.tolist()
+                            
+                            bottom10_df = valid_items_df[valid_items_df['Item_Name'].isin(bottom10_items)].set_index([group_col, 'Item_Name'])
+                            
+                            try:
+                                b10_pivot = bottom10_df.unstack(level=0, fill_value=0)
+                                b10_pivot[('Sales_Val', 'TOTAL')] = b10_pivot['Sales_Val'].sum(axis=1)
+                                b10_pivot = b10_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=True)
+                                st.dataframe(b10_pivot.style.format("${:,.2f}"))
+                                chart_data = b10_pivot[('Sales_Val', 'TOTAL')].rename("Total Sales")
+                                st.bar_chart(chart_data)
+                            except Exception as e:
+                                st.error(f"Error in Bottom 10: {e}")
+                        else:
+                            st.info("No valid sales data for Bottom 10.")
                     st.divider()
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
