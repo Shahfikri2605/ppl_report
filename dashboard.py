@@ -527,8 +527,20 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         weight_kg = df_waste['Weight'].apply(clean_currency)
         df_waste['Qty'] = qty_units * weight_kg
         df_waste['Val'] = df_waste['Val'].apply(clean_currency)
+    def get_max_date(dframe):
+        try:
+            if not dframe.empty and 'Date' in dframe.columns:
+                return dframe['Date'].max().strftime('%d %b %Y')
+        except: pass
+        return "N/A"
 
-    return df_sales, df_dist, df_waste, master_name_map, nav_to_article_map, []
+    update_info = {
+        "Sales": get_max_date(df_sales),
+        "Dist": get_max_date(df_dist),
+        "Waste": get_max_date(df_waste)
+    }
+
+    return df_sales, df_dist, df_waste, master_name_map, nav_to_article_map, [], update_info
 # --- 4. MAIN APP LOGIC ---
 def main_app_interface(authenticator, name, permissions):
     with st.sidebar:
@@ -660,6 +672,11 @@ def main_app_interface(authenticator, name, permissions):
                         if not df_d.empty: df_d = df_d[df_d['Store'].isin(my_stores)]
                         if not df_w.empty: df_w = df_w[df_w['Store'].isin(my_stores)]
                         st.warning(f"🔒 View restricted to assigned stores.")
+                    st.caption(f"""
+                    **Last Data Updates:** 🛒 Sales: **{update_info['Sales']}** |  🚚 Dist: **{update_info['Dist']}** |  🗑️ Waste: **{update_info['Waste']}**
+                    """)
+                    st.sidebar.markdown("---")
+                    st.sidebar.header("Filters")
 
 
                     st.sidebar.markdown("---")
