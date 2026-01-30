@@ -665,7 +665,7 @@ def main_app_interface(authenticator, name, permissions):
             if r_s is not None and r_d is not None:
                 res = process_data(r_s, r_db, r_d, r_w, rpt)
                 if res:
-                    df_s, df_d, df_w, map_name, map_art, _ = res
+                    df_s, df_d, df_w, map_name, map_art, _ , update_info= res
                     my_stores = permissions.get("stores", [])
                     if "ALL" not in my_stores:
                         if not df_s.empty: df_s = df_s[df_s['Store'].isin(my_stores)]
