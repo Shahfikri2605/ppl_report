@@ -644,132 +644,123 @@ def main_app_interface(authenticator, name, permissions):
         #             if write_to_sheet(t_url, "Sheet1", df_up): st.success("Updated!")
         #         else: st.error("No URL provided.")
         # with st.expander("☁️ Upload Data (NTUC Smart Update)"):
-        #     st.info("Upload your NTUC Excel file (Must have 'Sales' and 'Quantity' tabs).")
+        #     st.info("Upload your NTUC Excel file. This version preserves GSheet structure, adds new products at bottom and new dates at right.")
             
-        #     # File Uploader
         #     up_file = st.file_uploader("Upload NTUC Excel File", type=['xlsx'])
             
         #     if up_file and st.button("🚀 Update NTUC Sheets"):
-        #         # Safety Checks
         #         if "NTUC" not in st.session_state.get('report_type', ''):
         #             st.error(f"⚠️ Please select 'NTUC FRESH' or 'NTUC DRY' first.")
         #             st.stop()
                 
-        #         if st.session_state['urls'] is None:
-        #             st.error("Please select a Report System first.")
-        #         else:
-        #             try:
-        #                 status_msg = st.empty()
-        #                 sales_url = st.session_state['urls']['s']
-        #                 xls = pd.ExcelFile(up_file)
-        #                 target_tabs = ["Sales", "Quantity"]
-        #                 progress_bar = st.progress(0)
-                        
-        #                 for i, tab_name in enumerate(target_tabs):
-        #                     if tab_name in xls.sheet_names:
-        #                         status_msg.info(f"Updating '{tab_name}' tab...")
+        #         try:
+        #             status_msg = st.empty()
+        #             sales_url = st.session_state['urls']['s']
+        #             xls = pd.ExcelFile(up_file)
+        #             target_tabs = ["Sales", "Quantity"]
+        #             progress_bar = st.progress(0)
+                    
+                   
+        #             def standardize_text(val):
+        #                 return " ".join(str(val).strip().upper().split())
+
+        #             def standardize_date_col(col):
+        #                 try:
+        #                     return pd.to_datetime(col, dayfirst=True).strftime('%d/%m/%Y')
+        #                 except:
+        #                     return standardize_text(col)
+
+        #             for i, tab_name in enumerate(target_tabs):
+        #                 if tab_name in xls.sheet_names:
+        #                     status_msg.info(f"Processing '{tab_name}'...")
+                            
+        #                     # A. Read New Data (Excel)
+        #                     new_df = pd.read_excel(up_file, sheet_name=tab_name)
+        #                     # Harmonize New Column Names
+        #                     new_df.columns = [standardize_date_col(c) for c in new_df.columns]
+
+        #                     # B. Read Old Data (Google Sheets)
+        #                     client = get_gspread_client()
+        #                     sh = client.open_by_url(sales_url)
+        #                     ws = sh.worksheet(tab_name)
+        #                     gsheet_raw = ws.get_all_values()
+                            
+        #                     if gsheet_raw:
+        #                         # 1. Find Header Index
+        #                         search_keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
+        #                         header_idx = -1
+        #                         for r_idx, row in enumerate(gsheet_raw[:20]):
+        #                             row_std = [standardize_text(x) for x in row]
+        #                             if sum(1 for k in search_keys if k in row_std) >= 3:
+        #                                 header_idx = r_idx
+        #                                 header_row_raw = row # Save original header string
+        #                                 break
                                 
-        #                         # 1. Read New Data (Excel)
-        #                         new_df = pd.read_excel(up_file, sheet_name=tab_name)
+        #                         if header_idx == -1:
+        #                             st.error(f"❌ Could not find headers in GSheet '{tab_name}'.")
+        #                             st.stop()
+
+                               
+        #                         top_rows = gsheet_raw[:header_idx]
                                 
-        #                         # Standardize New Headers (Dates to DD/MM/YYYY, others to UPPERCASE)
-        #                         new_cols = []
-        #                         for col in new_df.columns:
-        #                             if isinstance(col, pd.Timestamp):
-        #                                 new_cols.append(col.strftime('%d/%m/%Y'))
-        #                             else:
-        #                                 new_cols.append(str(col).strip().upper())
-        #                         new_df.columns = new_cols
-
-        #                         # 2. Read Old Data (Google Sheets)
-        #                         client = get_gspread_client()
-        #                         sh = client.open_by_url(sales_url)
-        #                         ws = sh.worksheet(tab_name)
-        #                         gsheet_raw = ws.get_all_values()
+        #                         old_df = pd.DataFrame(gsheet_raw[header_idx+1:], columns=header_row_raw)
+        #                         old_df.columns = [standardize_date_col(c) for c in old_df.columns]
                                 
-        #                         if gsheet_raw:
-        #                             # Find Header Index (e.g., Row 2)
-        #                             search_keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
-        #                             header_idx = -1
-        #                             for r_idx, row in enumerate(gsheet_raw[:20]):
-        #                                 row_up = [str(x).strip().upper() for x in row]
-        #                                 if sum(1 for k in search_keys if any(k in cell for cell in row_up)) == 3:
-        #                                     header_idx = r_idx
-        #                                     break
-                                    
-        #                             if header_idx == -1:
-        #                                 st.error(f"❌ Header not found in GSheet '{tab_name}'.")
-        #                                 st.stop()
+        #                         # 3. Standardize Row Keys (The Matchmaker)
+        #                         keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
+        #                         for k in keys:
+        #                             if k in old_df.columns: old_df[k] = old_df[k].apply(standardize_text)
+        #                             if k in new_df.columns: new_df[k] = new_df[k].apply(standardize_text)
 
-        #                             # Separate Meta, Header, and Data
-        #                             top_rows = gsheet_raw[:header_idx]
-        #                             header_row = gsheet_raw[header_idx]
-        #                             old_df = pd.DataFrame(gsheet_raw[header_idx+1:], columns=header_row)
-                                    
-        #                             # Standardize GSheet Data columns
-        #                             rename_map = {'1ST COLUMN': ['1ST COLUMN','STORE'], '2ND COLUMN': ['2ND COLUMN','PRODUCT','ITEM'], 'METRIC': ['METRIC']}
-        #                             old_df = strict_rename(old_df, rename_map)
-                                    
-        #                             # --- SMART ORDERED MERGE ---
-        #                             keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
-                                    
-        #                             # Force Keys to strings for perfect matching
-        #                             for k in keys:
-        #                                 old_df[k] = old_df[k].astype(str).str.strip()
-        #                                 new_df[k] = new_df[k].astype(str).str.strip()
+        #                         # 4. SET INDEX & MERGE
+                               
+        #                         old_df = old_df.drop_duplicates(subset=keys).set_index(keys)
+        #                         new_df = new_df.drop_duplicates(subset=keys).set_index(keys)
 
-        #                             # Set indices to perform the match
-        #                             old_df = old_df.set_index(keys)
-        #                             new_df = new_df.set_index(keys)
-
-        #                             # a) Determine Final ROW Order (Old rows first, then brand new products)
-        #                             final_row_index = old_df.index.tolist()
-        #                             new_products = [idx for idx in new_df.index if idx not in old_df.index]
-        #                             final_row_index.extend(new_products)
-
-        #                             # b) Determine Final COLUMN Order (Old dates first, then brand new dates)
-        #                             # Filter out the keys because we reset_index later
-        #                             final_col_order = [c for c in old_df.columns if c not in keys]
-        #                             new_dates = [c for c in new_df.columns if c not in old_df.columns and c not in keys]
-        #                             final_col_order.extend(new_dates)
-
-        #                             # c) Update values: New file overwrites old file, but keeps old data if new cell is empty
-        #                             # Replace empty strings with NaN so combine_first works
-        #                             old_df = old_df.replace(r'^\s*$', np.nan, regex=True)
-        #                             new_df = new_df.replace(r'^\s*$', np.nan, regex=True)
-                                    
-        #                             # Perform Merge
-        #                             combined = new_df.combine_first(old_df)
-                                    
-        #                             # Apply the orders (Preserves GSheet structure)
-        #                             final_df = combined.reindex(index=final_row_index, columns=final_col_order).reset_index()
-
-        #                             # --- RECONSTRUCT AND UPLOAD ---
-        #                             final_cols = final_df.columns.tolist()
-        #                             final_values = final_df.fillna("").astype(str).values.tolist()
-                                    
-        #                             # Pad metadata rows to match new width
-        #                             width = len(final_cols)
-        #                             padded_top = [tr + [''] * (width - len(tr)) if len(tr) < width else tr[:width] for tr in top_rows]
-                                    
-        #                             final_output = padded_top + [final_cols] + final_values
-                                    
-        #                             ws.clear()
-        #                             ws.resize(rows=len(final_output), cols=len(final_output[0]))
-        #                             ws.update(final_output)
-                                    
-        #                         else:
-        #                             # If GSheet is empty, just upload new data
-        #                             write_to_sheet(sales_url, tab_name, new_df)
                                 
-        #                     progress_bar.progress((i + 1) / len(target_tabs))
-                        
-        #                 status_msg.success("✅ Smart Update Complete: New products & dates added!")
-        #                 st.balloons()
-        #                 st.cache_data.clear()
-                        
-        #             except Exception as e:
-        #                 st.error(f"Error during smart update: {e}")
+        #                         final_row_order = old_df.index.tolist()
+        #                         brand_new_products = [idx for idx in new_df.index if idx not in old_df.index]
+        #                         final_row_order.extend(brand_new_products)
+
+                               
+        #                         final_col_order = old_df.columns.tolist()
+        #                         brand_new_dates = [c for c in new_df.columns if c not in old_df.columns]
+        #                         final_col_order.extend(brand_new_dates)
+
+                                
+        #                         old_df = old_df.replace(r'^\s*$', np.nan, regex=True)
+        #                         new_df = new_df.replace(r'^\s*$', np.nan, regex=True)
+                                
+        #                         combined = new_df.combine_first(old_df)
+                                
+                                
+        #                         final_df = combined.reindex(index=final_row_order, columns=final_col_order).reset_index()
+
+        #                         # 5. RECONSTRUCT & UPLOAD
+        #                         final_header = final_df.columns.tolist()
+        #                         final_data = final_df.fillna("").astype(str).values.tolist()
+                                
+        #                         # Pad Top Metadata rows to match new width
+        #                         width = len(final_header)
+        #                         padded_top = [tr + [''] * (width - len(tr)) if len(tr) < width else tr[:width] for tr in top_rows]
+                                
+        #                         final_output = padded_top + [final_header] + final_data
+                                
+        #                         ws.clear()
+        #                         ws.resize(rows=len(final_output), cols=len(final_output[0]))
+        #                         ws.update(final_output)
+                                
+        #                     else:
+        #                         write_to_sheet(sales_url, tab_name, new_df)
+                                
+        #                 progress_bar.progress((i + 1) / len(target_tabs))
+                    
+        #             status_msg.success("✅ Tally Successful! Existing data preserved, new items and dates added.")
+        #             st.balloons()
+        #             st.cache_data.clear()
+                    
+        #         except Exception as e:
+        #             st.error(f"Error during update: {e}")
         
 
     
