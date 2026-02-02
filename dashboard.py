@@ -124,6 +124,9 @@ def normalize_store_name(name, report_type='CS'):
         name = name.replace('FPX-', '').strip()
         if name == 'BUKIT TIMAH PLAZA-PM' : return 'BUKIT TIMAH PLAZA'
         if name == 'CLEMENTI MALL-PM' : return 'CLEMENTI MALL'
+        if name == 'FUNAN-PM' : return 'FUNAN'
+        if name == 'BALMORAL PLAZA-PM' : return 'BALMORAL PLAZA'
+        if name == 'BEDOK MALL-APM' : return 'BEDOK MALL'
         return name
     
     elif report_type == 'CS_DRY':
@@ -155,6 +158,9 @@ def normalize_store_name(name, report_type='CS'):
         name = name.replace('FPX-', '').strip()
         if name == 'BUKIT TIMAH PLAZA-PM' : return 'BUKIT TIMAH PLAZA'
         if name == 'CLEMENTI MALL-PM' : return 'CLEMENTI MALL'
+        if name == 'FUNAN-PM' : return 'FUNAN'
+        if name == 'BALMORAL PLAZA-PM' : return 'BALMORAL PLAZA'
+        if name == 'BEDOK MALL-APM' : return 'BEDOK MALL'
         return name
         
 
