@@ -92,6 +92,7 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'MP HILLVIEW-AM' : return 'MP HILLVIEW'
         if name == 'MP HILLVIEW-PM' : return 'MP HILLVIEW'
         if name == 'PASIR RIS MALL' : return 'CS PASIR RIS MALL'
+        
 
         # CS Cleanup
         replacements = { ' MARKET': '', ' SUPERMARKET': '', 'SINGAPORE': '', ' PTE LTD': ''}
@@ -879,7 +880,7 @@ def main_app_interface(authenticator, name, permissions):
                     v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum()
                     v_i_qty['STR%'] = (v_i_qty['Sales_Qty'] / v_i_qty['Dist_Qty'] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2)
                     v_i_qty = v_i_qty.sort_values('Dist_Qty', ascending=False)
-                    v_i_val = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val']].sum().sort_values('Dist_Val', ascending=False)
+                    v_i_val = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit']].sum().sort_values('Dist_Val', ascending=False)
                     v_top10_all = df.groupby([group_col, 'Item_Name'])['Sales_Val'].sum().reset_index()
 
 
@@ -1017,14 +1018,14 @@ def main_app_interface(authenticator, name, permissions):
 
                     display_item_drilldown(
                         t3, 
-                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty'], 
+                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty','Profit'], 
                         'Sales_Qty', "{:,.2f}",group_col
                     )
 
                     # Tab 4: Item Val (Item -> Stores) - NEW LOGIC
                     display_item_drilldown(
-                        t4, 
-                        ['Dist_Val', 'Sales_Val', 'Waste_Val'], 
+                        t4,
+                        ['Dist_Val', 'Sales_Val', 'Waste_Val','Profit'], 
                         'Sales_Val', "{:,.2f}",group_col
                     )
 
