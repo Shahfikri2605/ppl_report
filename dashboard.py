@@ -551,6 +551,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     return df_sales, df_dist, df_waste, master_name_map, nav_to_article_map, [], update_info
 # --- 4. MAIN APP LOGIC ---
 def main_app_interface(authenticator, name, permissions):
+    st.title("PPL Report")
     with st.sidebar:
         st.write(f"👤 User: **{name}**")
         authenticator.logout('Logout', 'sidebar')
