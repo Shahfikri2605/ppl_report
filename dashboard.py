@@ -855,7 +855,7 @@ def main_app_interface(authenticator, name, permissions):
                     else:
                         w_grp = pd.DataFrame(columns=[group_col, 'Store', 'NAV', 'Waste_Qty', 'Waste_Val'])
 
-                    df = pd.merge(d_grp, s_grp, on=[group_col,'Store', 'NAV'], how='outer')
+                    df = pd.merge(d_grp, s_grp, on=[group_col,'Store', 'NAV'], how='outer').fillna(0)
                     if not w_grp.empty:
                         df = pd.merge(df, w_grp, on=[group_col,'Store', 'NAV'], how='outer').fillna(0)
                     else:
