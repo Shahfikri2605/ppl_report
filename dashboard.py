@@ -651,9 +651,8 @@ def main_app_interface(authenticator, name, permissions):
         #             else: df_up = pd.read_excel(up_file, dtype=str)
         #             if write_to_sheet(t_url, "Sheet1", df_up): st.success("Updated!")
         #         else: st.error("No URL provided.")
-        rpt = st.session_state['report_type']
-        if rpt =="NTUC_DRY" or rpt == "NTUC":
-            with st.expander("☁️ Upload Data Sales (NTUC Smart Update)"):
+        
+        with st.expander("☁️ Upload Data Sales (NTUC Smart Update)"):
                 st.info("Upload your NTUC Excel file. This version preserves GSheet structure, adds new products at bottom and new dates at right.")
                 
                 up_file = st.file_uploader("Upload NTUC Excel File", type=['xlsx'])
