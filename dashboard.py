@@ -97,7 +97,6 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'MARINA BAY LINK MALL-PM' : return 'MARINA BAY LINK MALL'
         if name == 'CS PLAZA SINGAPURA-PM' : return 'CS PLAZA SINGAPURA'
         if name == 'CS ONE HOLLAND VILLAGE-AM': return 'CS ONE HOLLAND VILLAGE'
-        if name == ''
         
 
         # CS Cleanup
