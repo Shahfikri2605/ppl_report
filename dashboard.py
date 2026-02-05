@@ -92,6 +92,7 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'MP HILLVIEW-AM' : return 'MP HILLVIEW'
         if name == 'MP HILLVIEW-PM' : return 'MP HILLVIEW'
         if name == 'PASIR RIS MALL' : return 'CS PASIR RIS MALL'
+        if name == 'SUNTEC CITY' : return 'CS SUNTEC CITY'
         
 
         # CS Cleanup
@@ -132,6 +133,34 @@ def normalize_store_name(name, report_type='CS'):
     
     elif report_type == 'CS_DRY':
         if name == 'COMPASS ONE': return 'CS COMPASS ONE'
+        if name == 'CS GREAT WORLD CITY-AM' : return 'CS GREAT WORLD CITY'
+        if name == 'CS GREAT WORLD CITY-PM' : return 'CS GREAT WORLD CITY'
+        if name == 'MP TANGLIN-AM' : return 'MP TANGLIN'
+        if name == 'MP TANGLIN-PM' : return 'MP TANGLIN'
+        if name == 'CS PARKWAY PARADE-PM' : return 'CS PARKWAY PARADE'
+        if name == 'CS I12 KATONG-PM' : return 'CS I12 KATONG'
+        if name == 'CS 1 HOLLAND-PM' : return 'CS 1 HOLLAND'
+        if name == 'CS CHANCERY COURT 2-PM' : return 'CS CHANCERY COURT'
+        if name == 'CHANCERY COURT 2' : return 'CS CHANCERY COURT'
+        if name == 'CS ONE HOLLAND VILLAGE-PM' : return 'CS ONE HOLLAND VILLAGE'
+        if name == 'ONE HOLLAND VILLAGE' : return 'CS ONE HOLLAND VILLAGE'
+        if name == 'ANCHORPOINT 3' :  return 'CS ANCHORPOINT 3'
+        if name == 'JOO CHIAT' : return 'CS JOO CHIAT'
+        if name == 'JS SENTOSA QUAYSIDE-PM' : return 'JS SENTOSA QUAYSIDE'
+        if name == 'CS ALOCASSIA-PM' : return 'CS ALOCASSIA'
+        if name == 'CS CLUNY COURT-PM' : return 'CS CLUNY COURT'
+        if name == 'CS MARINA ONE-PM' : return 'CS MARINA ONE'
+        if name == 'CS GUTHRIE HOUSE-PM' : return 'CS GUTHRIE HOUSE'
+        if name == 'CS ORCHARD HOTEL-AM' : return 'CS ORCHARD HOTEL'
+        if name == 'CS ORCHARD HOTEL-PM' : return 'CS ORCHARD HOTEL'
+        if name == 'CS RAIL MALL-PM' : return 'CS RAIL MALL'
+        if name == 'CS RAIL MALL-AM' : return 'CS RAIL MALL'
+        if name == 'CS SERANGOON NEX-PM' : return 'CS SERANGOON NEX'
+        if name == 'CS UNITED SQUARE-PM' : return 'CS UNITED SQUARE'
+        if name == 'MP HILLVIEW-AM' : return 'MP HILLVIEW'
+        if name == 'MP HILLVIEW-PM' : return 'MP HILLVIEW'
+        if name == 'PASIR RIS MALL' : return 'CS PASIR RIS MALL'
+        if name == 'SUNTEC CITY' : return 'CS SUNTEC CITY'
         return name
     
     elif report_type == 'SS_DRY':
@@ -871,16 +900,24 @@ def main_app_interface(authenticator, name, permissions):
                     df.loc[mask_unknown, 'Item_Name'] = "Item " + df.loc[mask_unknown, 'NAV'].astype(str)
                     df['Profit'] = df['Sales_Val'] - df['Dist_Val']
                     df['Profit_Qty'] = df['Sales_Qty'] - df ['Dist_Qty']
-                    # df['Balance_Qty'] = df['Dist_Qty'] - df['Sales_Qty'] - df['Waste_Qty']
+                    df['Balance Stock'] = df['Dist_Qty'] - df['Sales_Qty']
                     
-                   
+                    #Display whether Wastage or Balance Stock in tabs
+                    is_dry = rpt in ["CS_DRY","SS_DRY", "NTUC_DRY"]
+
+                    if is_dry:
+                        qty_display_list = ['Dist_Qty','Sales_Qty','Balance Stock']
+                        val_display_list = ['Dist_Val','Sales_Val','Profit']
+                    else:
+                        qty_display_list =['Dist_Qty','Sales_Qty','Waste_Qty','Profit_Qty']
+                        val_display_list =['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit']
 
                     # Views
-                    v_s_qty = df.groupby([group_col,'Store'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum()
+                    v_s_qty = df.groupby([group_col,'Store'])[qty_display_list].sum()
                     v_s_qty['STR%'] = (v_s_qty['Sales_Qty']/ v_s_qty['Dist_Qty'])*100
                     v_s_qty['STR%'] = v_s_qty['STR%'].replace([np.inf, -np.inf], 0).fillna(0)
-                    v_s_val = df.groupby([group_col,'Store'])[['Dist_Val', 'Sales_Val', 'Waste_Val','Profit']].sum()
-                    v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Qty', 'Sales_Qty', 'Waste_Qty']].sum()
+                    v_s_val = df.groupby([group_col,'Store'])[val_display_list].sum()
+                    v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[qty_display_list].sum()
                     v_i_qty['STR%'] = (v_i_qty['Sales_Qty'] / v_i_qty['Dist_Qty'] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2)
                     v_i_qty = v_i_qty.sort_values('Dist_Qty', ascending=False)
                     v_i_val = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit']].sum().sort_values('Dist_Val', ascending=False)
@@ -937,11 +974,10 @@ def main_app_interface(authenticator, name, permissions):
                                 st.markdown(f"#### 📦 Items in {selected_store}")
                                 st.dataframe(detail_view.style.format(fmt), width='stretch')
                     
-                    # Tab 1: Store QTY (Drilldown shows Dist, Sales, Waste, Balance)
                     display_drilldown(
                         t1, 
                         v_s_qty, 
-                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty'], # Columns to show in detail
+                        qty_display_list, # Columns to show in detail
                         'Sales_Qty', # Column to sort by
                         "{:,.2f}",group_col
                     ) 
@@ -950,7 +986,7 @@ def main_app_interface(authenticator, name, permissions):
                     display_drilldown(
                         t2, 
                         v_s_val, 
-                        ['Dist_Val', 'Sales_Val', 'Waste_Val'], # Columns to show in detail
+                        val_display_list, # Columns to show in detail
                         'Sales_Val', # Column to sort by
                         "{:,.2f}",group_col
                     )
@@ -1021,14 +1057,14 @@ def main_app_interface(authenticator, name, permissions):
 
                     display_item_drilldown(
                         t3, 
-                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty','Profit_Qty'], 
+                        qty_display_list, 
                         'Sales_Qty', "{:,.2f}",group_col
                     )
 
                     # Tab 4: Item Val (Item -> Stores) - NEW LOGIC
                     display_item_drilldown(
                         t4,
-                        ['Dist_Val', 'Sales_Val', 'Waste_Val','Profit'], 
+                        val_display_list, 
                         'Sales_Val', "{:,.2f}",group_col
                     )
 
