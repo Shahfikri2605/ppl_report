@@ -93,6 +93,7 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'MP HILLVIEW-PM' : return 'MP HILLVIEW'
         if name == 'PASIR RIS MALL' : return 'CS PASIR RIS MALL'
         if name == 'SUNTEC CITY' : return 'CS SUNTEC CITY'
+        if name == 'LENTOR MODERN' : return 'CS LENTOR'
         
 
         # CS Cleanup
