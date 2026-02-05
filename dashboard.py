@@ -870,6 +870,7 @@ def main_app_interface(authenticator, name, permissions):
                     mask_unknown = df['Item_Name'] == "Unknown Item"
                     df.loc[mask_unknown, 'Item_Name'] = "Item " + df.loc[mask_unknown, 'NAV'].astype(str)
                     df['Profit'] = df['Sales_Val'] - df['Dist_Val']
+                    df['Profit_Qty'] = df['Sales_Qty'] - df ['Dist_Qty']
                     # df['Balance_Qty'] = df['Dist_Qty'] - df['Sales_Qty'] - df['Waste_Qty']
                     
                    
@@ -1020,7 +1021,7 @@ def main_app_interface(authenticator, name, permissions):
 
                     display_item_drilldown(
                         t3, 
-                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty','Profit'], 
+                        ['Dist_Qty', 'Sales_Qty', 'Waste_Qty','Profit_Qty'], 
                         'Sales_Qty', "{:,.2f}",group_col
                     )
 
