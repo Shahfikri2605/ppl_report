@@ -94,6 +94,10 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'PASIR RIS MALL' : return 'CS PASIR RIS MALL'
         if name == 'SUNTEC CITY' : return 'CS SUNTEC CITY'
         if name == 'LENTOR MODERN' : return 'CS LENTOR'
+        if name == 'MARINA BAY LINK MALL-PM' : return 'MARINA BAY LINK MALL'
+        if name == 'CS PLAZA SINGAPURA-PM' : return 'CS PLAZA SINGAPURA'
+        if name == 'CS ONE HOLLAND VILLAGE-AM': return 'CS ONE HOLLAND VILLAGE'
+        if name == ''
         
 
         # CS Cleanup
