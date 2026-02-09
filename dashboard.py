@@ -718,123 +718,123 @@ def main_app_interface(authenticator, name, permissions):
         #         else: st.error("No URL provided.")
         
         with st.expander("☁️ Upload Data Sales (NTUC Smart Update)"):
-                st.info("Upload your NTUC Excel file. This version preserves GSheet structure, adds new products at bottom and new dates at right.")
+            st.info("Upload your NTUC Excel file. This version detects headers, preserves history, and adds new items/dates.")
+            
+            up_file = st.file_uploader("Upload NTUC Excel File", type=['xlsx'])
+            
+            if up_file and st.button("🚀 Update NTUC Sheets"):
+                if "NTUC" not in st.session_state.get('report_type', ''):
+                    st.error(f"⚠️ Please select 'NTUC FRESH' or 'NTUC DRY' first.")
+                    st.stop()
                 
-                up_file = st.file_uploader("Upload NTUC Excel File", type=['xlsx'])
-                
-                if up_file and st.button("🚀 Update NTUC Sheets"):
-                    if "NTUC" not in st.session_state.get('report_type', ''):
-                        st.error(f"⚠️ Please select 'NTUC FRESH' or 'NTUC DRY' first.")
-                        st.stop()
+                try:
+                    status_msg = st.empty()
+                    sales_url = st.session_state['urls']['s']
+                    xls = pd.ExcelFile(up_file)
+                    target_tabs = ["Sales", "Quantity"]
+                    progress_bar = st.progress(0)
                     
-                    try:
-                        status_msg = st.empty()
-                        sales_url = st.session_state['urls']['s']
-                        xls = pd.ExcelFile(up_file)
-                        target_tabs = ["Sales", "Quantity"]
-                        progress_bar = st.progress(0)
-                        
+                    # --- HELPERS ---
+                    def standardize_text(val):
+                        if pd.isna(val) or str(val).strip() == "": return ""
+                        return " ".join(str(val).replace('\n', ' ').strip().upper().split())
+
+                    def standardize_date_col(col):
+                        col_str = str(col).strip()
+                        # Only parse as date if it looks like one (contains digits)
+                        if any(char.isdigit() for char in col_str) and len(col_str) >= 6:
+                            try: return pd.to_datetime(col_str, dayfirst=True).strftime('%d/%m/%Y')
+                            except: return standardize_text(col_str)
+                        return standardize_text(col_str)
+
+                    for i, tab_name in enumerate(target_tabs):
+                        if tab_name in xls.sheet_names:
+                            status_msg.info(f"Processing '{tab_name}'...")
+                            
+                            # --- A. READ NEW DATA (EXCEL) WITH HEADER DETECTION ---
+                            # 1. Read raw without header
+                            raw_excel_df = pd.read_excel(up_file, sheet_name=tab_name, header=None)
+                            
+                            # 2. Find the real header row
+                            search_keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
+                            ex_header_idx = -1
+                            
+                            for r_idx in range(min(20, len(raw_excel_df))):
+                                row_std = [standardize_text(x) for x in raw_excel_df.iloc[r_idx]]
+                                if sum(1 for k in search_keys if k in row_std) >= 3:
+                                    ex_header_idx = r_idx; break
+                            
+                            if ex_header_idx == -1:
+                                st.error(f"❌ Could not find headers in Excel '{tab_name}'.")
+                                st.stop()
+                                
+                            # 3. Slice and set proper columns
+                            new_df = raw_excel_df.iloc[ex_header_idx+1:].copy()
+                            new_df.columns = [standardize_date_col(c) for c in raw_excel_df.iloc[ex_header_idx]]
+
+                            # --- B. READ OLD DATA (GOOGLE SHEETS) ---
+                            client = get_gspread_client(); sh = client.open_by_url(sales_url)
+                            ws = sh.worksheet(tab_name); gsheet_raw = ws.get_all_values()
+                            
+                            if gsheet_raw:
+                                # 1. Find Header in GSheet
+                                header_idx = -1
+                                for r_idx, row in enumerate(gsheet_raw[:20]):
+                                    row_std = [standardize_text(x) for x in row]
+                                    if sum(1 for k in search_keys if k in row_std) >= 3:
+                                        header_idx = r_idx; header_row_raw = row; break
+                                
+                                if header_idx == -1:
+                                    st.error(f"❌ Could not find headers in GSheet '{tab_name}'."); st.stop()
+
+                                top_rows = gsheet_raw[:header_idx]
+                                old_df = pd.DataFrame(gsheet_raw[header_idx+1:], columns=header_row_raw)
+                                old_df.columns = [standardize_date_col(c) for c in old_df.columns]
+                                
+                                # --- C. MERGE (SAFE MODE) ---
+                                keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
+                                for k in keys:
+                                    if k in old_df.columns: old_df[k] = old_df[k].apply(standardize_text)
+                                    if k in new_df.columns: new_df[k] = new_df[k].apply(standardize_text)
+
+                                old_df = old_df.drop_duplicates(subset=keys).set_index(keys)
+                                new_df = new_df.drop_duplicates(subset=keys).set_index(keys)
+
+                                # Structure: Old rows/cols first, then new ones
+                                final_row_order = old_df.index.tolist()
+                                final_row_order.extend([idx for idx in new_df.index if idx not in old_df.index])
+
+                                final_col_order = old_df.columns.tolist()
+                                final_col_order.extend([c for c in new_df.columns if c not in old_df.columns])
+
+                                # LOGIC: old.combine_first(new) -> Keeps Old Data, Fills Gaps with New
+                                old_df = old_df.replace(r'^\s*$', np.nan, regex=True)
+                                new_df = new_df.replace(r'^\s*$', np.nan, regex=True)
+                                
+                                # This ensures existing dates are NOT updated, only new items/dates are added
+                                combined = old_df.combine_first(new_df) 
+                                
+                                final_df = combined.reindex(index=final_row_order, columns=final_col_order).reset_index()
+
+                                # --- D. UPLOAD ---
+                                final_header = final_df.columns.tolist()
+                                final_data = final_df.fillna("").astype(str).values.tolist()
+                                padded_top = [tr + [''] * (len(final_header) - len(tr)) for tr in top_rows]
+                                
+                                final_output = padded_top + [final_header] + final_data
+                                
+                                ws.clear(); ws.resize(rows=len(final_output), cols=len(final_output[0]))
+                                ws.update(final_output)
+                            else:
+                                write_to_sheet(sales_url, tab_name, new_df)
+
+                        progress_bar.progress((i + 1) / len(target_tabs))
                     
-                        def standardize_text(val):
-                            return " ".join(str(val).strip().upper().split())
-
-                        def standardize_date_col(col):
-                            try:
-                                return pd.to_datetime(col, dayfirst=True).strftime('%d/%m/%Y')
-                            except:
-                                return standardize_text(col)
-
-                        for i, tab_name in enumerate(target_tabs):
-                            if tab_name in xls.sheet_names:
-                                status_msg.info(f"Processing '{tab_name}'...")
-                                
-                                # A. Read New Data (Excel)
-                                new_df = pd.read_excel(up_file, sheet_name=tab_name)
-                                # Harmonize New Column Names
-                                new_df.columns = [standardize_date_col(c) for c in new_df.columns]
-
-                                # B. Read Old Data (Google Sheets)
-                                client = get_gspread_client()
-                                sh = client.open_by_url(sales_url)
-                                ws = sh.worksheet(tab_name)
-                                gsheet_raw = ws.get_all_values()
-                                
-                                if gsheet_raw:
-                                    # 1. Find Header Index
-                                    search_keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
-                                    header_idx = -1
-                                    for r_idx, row in enumerate(gsheet_raw[:20]):
-                                        row_std = [standardize_text(x) for x in row]
-                                        if sum(1 for k in search_keys if k in row_std) >= 3:
-                                            header_idx = r_idx
-                                            header_row_raw = row # Save original header string
-                                            break
-                                    
-                                    if header_idx == -1:
-                                        st.error(f"❌ Could not find headers in GSheet '{tab_name}'.")
-                                        st.stop()
-
-                                
-                                    top_rows = gsheet_raw[:header_idx]
-                                    
-                                    old_df = pd.DataFrame(gsheet_raw[header_idx+1:], columns=header_row_raw)
-                                    old_df.columns = [standardize_date_col(c) for c in old_df.columns]
-                                    
-                                    # 3. Standardize Row Keys (The Matchmaker)
-                                    keys = ['1ST COLUMN', '2ND COLUMN', 'METRIC']
-                                    for k in keys:
-                                        if k in old_df.columns: old_df[k] = old_df[k].apply(standardize_text)
-                                        if k in new_df.columns: new_df[k] = new_df[k].apply(standardize_text)
-
-                                    # 4. SET INDEX & MERGE
-                                
-                                    old_df = old_df.drop_duplicates(subset=keys).set_index(keys)
-                                    new_df = new_df.drop_duplicates(subset=keys).set_index(keys)
-
-                                    
-                                    final_row_order = old_df.index.tolist()
-                                    brand_new_products = [idx for idx in new_df.index if idx not in old_df.index]
-                                    final_row_order.extend(brand_new_products)
-
-                                
-                                    final_col_order = old_df.columns.tolist()
-                                    brand_new_dates = [c for c in new_df.columns if c not in old_df.columns]
-                                    final_col_order.extend(brand_new_dates)
-
-                                    
-                                    old_df = old_df.replace(r'^\s*$', np.nan, regex=True)
-                                    new_df = new_df.replace(r'^\s*$', np.nan, regex=True)
-                                    
-                                    combined = new_df.combine_first(old_df)
-                                    
-                                    
-                                    final_df = combined.reindex(index=final_row_order, columns=final_col_order).reset_index()
-
-                                    # 5. RECONSTRUCT & UPLOAD
-                                    final_header = final_df.columns.tolist()
-                                    final_data = final_df.fillna("").astype(str).values.tolist()
-                                    
-                                    # Pad Top Metadata rows to match new width
-                                    width = len(final_header)
-                                    padded_top = [tr + [''] * (width - len(tr)) if len(tr) < width else tr[:width] for tr in top_rows]
-                                    
-                                    final_output = padded_top + [final_header] + final_data
-                                    
-                                    ws.clear()
-                                    ws.resize(rows=len(final_output), cols=len(final_output[0]))
-                                    ws.update(final_output)
-                                    
-                                else:
-                                    write_to_sheet(sales_url, tab_name, new_df)
-                                    
-                            progress_bar.progress((i + 1) / len(target_tabs))
-                        
-                        status_msg.success("✅ Tally Successful! Existing data preserved, new items and dates added.")
-                        st.balloons()
-                        st.cache_data.clear()
-                        
-                    except Exception as e:
-                        st.error(f"Error during update: {e}")
+                    status_msg.success("✅ Update Successful! History preserved, new data added.")
+                    st.balloons(); st.cache_data.clear()
+                    
+                except Exception as e:
+                    st.error(f"Error during update: {e}")
         
 
     
