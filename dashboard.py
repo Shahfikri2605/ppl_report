@@ -149,6 +149,11 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'JEWEL CHANGI AIRPORT .' : return 'JEWEL'
         if name == 'KOMO SHOPPES FINEST' : return 'KOMO' 
         if name == 'CORONATION PLAZA BUKIT TIMAH': return 'CORONATION PLAZA'
+        if name == 'WHITESANDS' : return 'WHITE SANDS'
+        if name == 'VIVO CITY HYPER-PM' : return 'VIVO CITY HYPER'
+        if name == 'JUNCTION 8-APM' : return 'JUNCTION 8'
+        if name == 'PARKWAY PARADE-PM': return 'HYPER PARKWAY PARADE'
+        if name == 'ZHONGSHAN PARK': return 'ZHONG SHAN PARK'
         return name
     
     elif report_type == 'CS_DRY':
@@ -227,6 +232,10 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'JEWEL CHANGI AIRPORT .' : return 'JEWEL'
         if name == 'KOMO SHOPPES FINEST' : return 'KOMO' 
         if name == 'CORONATION PLAZA BUKIT TIMAH': return 'CORONATION PLAZA'
+        if name == 'WHITESANDS' : return 'WHITE SANDS'
+        if name == 'VIVO CITY HYPER-PM' : return 'VIVO CITY HYPER'
+        if name == 'PARKWAY PARADE-PM': return 'HYPER PARKWAY PARADE'
+        if name == 'ZHONGSHAN PARK': return 'ZHONG SHAN PARK'
         return name
         
 
