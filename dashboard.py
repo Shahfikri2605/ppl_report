@@ -354,7 +354,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
 
     elif report_type == "SS_DRY":
         db_cols = {'Article': ['cno_sku'], 'NAV': ['partno'], 'ArtDesc': ['name2'], 'NavDesc': ['name2']}
-        sales_cols = {'Article': ['ITEMCODE', 'Article'], 'Qty': ['QTY', 'Quantity'], 'Val': ['SALES BEF GST', 'Total Amount', 'Amount'], 'Store': ['OUTLET', 'Store'], 'Date': ['YEAR', 'TRXDATE'], 'Name': ['DESCRIPTION', 'Name']}
+        sales_cols = {'Article': ['ITEMCODE', 'Article'], 'Qty': ['QTY', 'Quantity'], 'Val': ['SALES BEF GST', 'Total Amount', 'Amount'], 'Store': ['OUTLET', 'Store'], 'Date': ['YEAR', 'TRXDATE'],'Month': ['Month'], 'Name': ['DESCRIPTION', 'Name']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['External Doc No.'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Unit Price Excl. GST'], 'Date': ['Posting Date','Date'], 'Chain': ['Transfer-to Code']}
 
     elif report_type == "NTUC_DRY":
@@ -490,8 +490,25 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     # Handle Sales Dates
     if 'Date' in df_sales.columns:
         if report_type == 'SS_DRY':
+            # Extract the Year
             df_sales['Year'] = df_sales['Date'].astype(str).replace(r'\.0$', '', regex=True)
-            df_sales['Date'] = pd.to_datetime(df_sales['Year'] + "-01-01", errors='coerce') # Dummy date
+            
+            # Map numeric months to 3-letter strings if the column exists
+            if 'Month' in df_sales.columns:
+                # Ensure it's treated as a number first, drop NaN, then map
+                month_map = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 
+                             7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec',
+                             '1': 'Jan', '2': 'Feb', '3': 'Mar', '4': 'Apr', '5': 'May', '6': 'Jun', 
+                             '7': 'Jul', '8': 'Aug', '9': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'}
+                
+                # Convert the column to strings and map to abbreviations
+                df_sales['Month'] = df_sales['Month'].astype(str).replace(r'\.0$', '', regex=True).map(month_map).fillna('ALL')
+            else:
+                df_sales['Month'] = "Annual"
+                
+            # Create a dummy date so later logic doesn't crash, but use the real Year and Month
+            df_sales['Date'] = pd.to_datetime(df_sales['Year'] + "-01-01", errors='coerce') 
+            df_sales['Week'] = "Annual"
         elif report_type == 'SS' :
             # Sheng Siong: 09-12-2025 (Day-Month-Year)
             df_sales['Date'] = pd.to_datetime(df_sales['Date'], dayfirst=True, errors='coerce')
@@ -512,9 +529,9 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_sales['Week'] = "ALL"
 
    
-    if report_type == 'SS_DRY':
-        df_sales['Month'] = "Annual"
-        df_sales['Week'] = "Annual"
+    # if report_type == 'SS_DRY':
+    #     df_sales['Month'] = "Annual"
+    #     df_sales['Week'] = "Annual"
 
     # --- C. DISTRIBUTION -
     # d_map = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['Customer']}
@@ -563,9 +580,9 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     df_dist['Month'] = df_dist['Date'].dt.month_name().str[:3]
     df_dist['Week'] = df_dist['Date'].dt.strftime('%Y-W%U')
     df_dist['Qty'] = df_dist['Qty'].apply(clean_currency)
-    if report_type == 'SS_DRY':
-        df_dist['Month'] = "Annual"
-        df_dist['Week'] = "Annual"
+    # if report_type == 'SS_DRY':
+    #     df_dist['Month'] = "Annual"
+    #     df_dist['Week'] = "Annual"
     
     if report_type == "CS_DRY" or report_type == "SS_DRY" or report_type == "NTUC_DRY":
         pass
