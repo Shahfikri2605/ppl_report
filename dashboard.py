@@ -323,7 +323,7 @@ def find_correct_header_row(df_in, required_map, source_name="File"):
 
 # --- 3. MAIN PROCESS DATA FUNCTION ---
 @st.cache_data
-def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type):
+def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type,df_uom_raw=None):
     master_name_map = {}
     nav_to_article_map = {} 
 
@@ -390,6 +390,25 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             df_db['Final_Name'] = df_db['Final_Name'].fillna(df_db['NavDesc'])
         df_db['Final_Name'] = df_db['Final_Name'].fillna("Unknown DB Item")
         master_name_map.update(df_db.set_index('NAV')['Final_Name'].to_dict())
+    uom_mapping = {}
+    if 'UOM' in df_db.columns:
+        uom_mapping = df_db.set_index('NAV')['UOM'].to_dict()
+    
+    # Extract RSP and UNIT NAME 2 from UOM Sheet
+    rsp_mapping = {}
+    unit2_mapping = {}
+    if df_uom_raw is not None:
+        uom_sheet_cols = {'Desc': ['Item Description', 'Description'], 'RSP': ['RSP'], 'Unit2': ['UNIT NAME 2', 'Unit name 2']}
+        df_uom = find_correct_header_row(df_uom_raw, uom_sheet_cols, "Customer ")
+        
+        if df_uom is not None:
+            df_uom = strict_rename(df_uom, uom_sheet_cols)
+            df_uom = df_uom.dropna(subset=['Desc'])
+            if 'RSP' in df_uom.columns:
+                rsp_mapping = df_uom.set_index('Desc')['RSP'].apply(clean_currency).to_dict()
+            if 'Unit2' in df_uom.columns:
+                unit2_mapping = df_uom.set_index('Desc')['Unit2'].astype(str).str.upper().str.strip().to_dict()
+
 
     # --- B. SALES ---
     if report_type == "NTUC" or report_type == "NTUC_DRY":
@@ -485,7 +504,24 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     df_sales['Store'] = df_sales['Store'].apply(lambda x: normalize_store_name(x, report_type))
     df_sales['Qty'] = df_sales['Qty'].apply(clean_currency)
     df_sales['Val'] = df_sales['Val'].apply(clean_currency)
-    
+
+    if report_type in ['CS', 'SS', 'NTUC']:
+        df_sales['UOM_Str'] = df_sales['NAV'].map(uom_mapping).fillna('KG')
+        df_sales['DB_Item_Name'] = df_sales['NAV'].map(df_db.set_index('NAV')['Final_Name'].to_dict())
+        df_sales['RSP_Val'] = df_sales['DB_Item_Name'].map(rsp_mapping).fillna(0.0)
+        df_sales['Unit2'] = df_sales['DB_Item_Name'].map(unit2_mapping).fillna('')
+        
+        def calc_qty(row):
+            # If Unit 2 specifically says KG (SG logic) OR if UOM string is exactly KG
+            if (row['Unit2'] == 'KG' or row['UOM_Str'] == 'KG') and row['RSP_Val'] > 0:
+                return row['Val'] / row['RSP_Val']
+            else:
+                factor = parse_uom_factor(row['UOM_Str'])
+                return row['Qty'] * factor
+                
+        df_sales['Qty'] = df_sales.apply(calc_qty, axis=1)
+        df_sales = df_sales.drop(columns=['UOM_Str', 'RSP_Val', 'DB_Item_Name', 'Unit2'], errors='ignore')
+
             # Cold Storage: 2025.12.31 (Year.Month.Day)
     # Handle Sales Dates
     if 'Date' in df_sales.columns:
