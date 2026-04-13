@@ -490,8 +490,8 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     # For SS_DRY, set Sales_Qty and Sales_Val to 0.0 if Store is 'TOTAL'
     if report_type == "SS_DRY" and 'Store' in df_sales.columns:
         mask_total = df_sales['Store'].astype(str).str.upper() == 'TOTAL'
-        df_sales.loc[mask_total, 'Qty'] = 0.0
-        df_sales.loc[mask_total, 'Val'] = 0.0
+        df_sales.loc[mask_total, 'Qty'] = "0.0"
+        df_sales.loc[mask_total, 'Val'] = "0.0"
     
     df_sales['Article'] = df_sales['Article'].apply(clean_id)
     df_sales['NAV'] = df_sales['Article'].map(db_mapping_forward).fillna("0")
