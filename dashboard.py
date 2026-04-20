@@ -132,6 +132,7 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'CLEMENTI MALL-PM' : return 'CLEMENTI MALL'
         if name == 'FUNAN-PM' : return 'FUNAN'
         if name == 'BALMORAL PLAZA-PM' : return 'BALMORAL PLAZA'
+        if name == 'BALMORAL PLAZA-AM' : return 'BALMORAL PLAZA'
         if name == 'BEDOK MALL-APM' : return 'BEDOK MALL'
         if name == 'CLEMENTI MALL FINEST' : return 'CLEMENTI MALL'
         if name == 'FINEST @ THE WOODLEIGH MALL' : return 'WOODLEIGH MALL'
@@ -143,18 +144,37 @@ def normalize_store_name(name, report_type='CS'):
         if name == 'FINEST @VALLEY POINT' : return 'VALLEY POINT FINEST'
         if name == 'YEW TEE MRT FINEST' : return 'YEW TEE MRT'
         if name == 'ANG MO KIO BLK 712 (B)' : return 'ANG MO KIO BLK712'
+        if name == 'ANCHORVALE VILLAGE' : return 'ANG MO KIO BLK712'
         if name == 'CENTURY SQUARE FINEST': return 'CENTURY SQUARE'
         if name == 'RAFFLES HOLLAND V HALL' : return 'RAFFLES HOLLAND V'
         if name == 'DAIRY FARM RESIDENCES FINEST' : return 'DFARM'
         if name == 'JEWEL CHANGI AIRPORT .' : return 'JEWEL'
         if name == 'KOMO SHOPPES FINEST' : return 'KOMO' 
         if name == 'CORONATION PLAZA BUKIT TIMAH': return 'CORONATION PLAZA'
+        if name == 'CORONATION PLAZA-PM' : return 'CORONATION PLAZA'
         if name == 'WHITESANDS' : return 'WHITE SANDS'
         if name == 'VIVO CITY HYPER-PM' : return 'VIVO CITY HYPER'
         if name == 'HYPER VIVO CITY' : return 'VIVO CITY HYPER'
         if name == 'JUNCTION 8-APM' : return 'JUNCTION 8'
         if name == 'PARKWAY PARADE-PM': return 'HYPER PARKWAY PARADE'
         if name == 'ZHONGSHAN PARK': return 'ZHONG SHAN PARK'
+        if name == 'THOMSON PLAZA-APM' : return 'THOMSON PLAZA'
+        if name == 'THOMSON PLAZA-AM' : return 'THOMSON PLAZA'
+        if name == 'TIONG BAHRU PLAZA-PM' : return 'TIONG BAHRU PLAZA'
+        if name == 'ZHONGSHAN PARK-PM' : return 'ZHONG SHAN PARK'
+        if name == 'JEWEL' : return 'JEWEL CHANGI AIRPORT'
+        if name == 'HYPER NEX' : return 'HYPER NEX MALL'
+        if name == 'HYPER NEX-PM' : return 'HYPER NEX MALL'
+        if name == 'MARINE PARADE-PM' : return 'MARINE PARADE'
+        if name == 'KATONG VILLAGE-PM' : return 'KATONG VILLAGE'
+        if name == 'HYPER JURONG POINT' : return 'JURONG PT HYPERMART'
+        if name == 'HYPER JEM-PM' : return 'HYPER JEM'
+        if name == 'DUNEARN VILLAGE-PM' : return 'DUNEARN VILLAGE'
+        if name == 'CENTRE POINT' : return 'CENTREPOINT'
+        if name == 'FINEST SEMBAWANG SHOPPING CENT' : return 'SEMBAWANG SHOPPING CENTRE'
+        if name == 'HOUGANG POINT' : return 'HOUGANG A 202'
+        if name == 'ANCHORVALE' : return 'ANCHORVALE VILLAGE'
+        
         return name
     
     elif report_type == 'CS_DRY':
@@ -952,429 +972,4 @@ def main_app_interface(authenticator, name, permissions):
                         df_w = df_w[df_w['Year'] == sel_year]
 
                     # Filter
-                    ft = st.sidebar.radio("Filter:", ["Month", "Week"])
-                    if ft == "Month":
-                        group_col = "Month"
-                        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                        opts = sorted(list(set(df_s['Month']) | set(df_d['Month']) | set(df_w['Month'] if not df_w.empty else [])), key=lambda x: month_order.index(x) if x in month_order else 99)
-                        if opts:
-                            default_opts = opts[-2:] if len(opts) > 1 else opts
-                        else:
-                            default_opts = []
-                        sel = st.sidebar.multiselect("Select", opts, default=default_opts)
-                        if sel:
-                            df_s = df_s[df_s['Month'].isin(sel)]
-                            df_d = df_d[df_d['Month'].isin(sel)]
-                            if not df_w.empty:
-                                df_w = df_w[df_w['Month'].isin(sel)]
-                    else:
-                        group_col = "Week" # Dynamic grouping variable
-                        opts = sorted(list(set(df_s['Week']) | set(df_d['Week']) | set(df_w['Week'] if not df_w.empty else [])), reverse=True)
-                        sel = st.sidebar.multiselect("Select", opts, default=opts[:4] if len(opts)>0 else opts) # Default to last 4 weeks
-                        if sel:
-                            df_s = df_s[df_s['Week'].isin(sel)]
-                            df_d = df_d[df_d['Week'].isin(sel)]
-                            if not df_w.empty:
-                                df_w = df_w[df_w['Week'].isin(sel)]
-
-                    # Calculation
-                    s_grp = df_s.groupby([group_col,'Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Sales_Qty', 'Val': 'Sales_Val'})
-                    d_grp = df_d.groupby([group_col,'Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Dist_Qty', 'Val': 'Dist_Val'})
-                    if not df_w.empty:
-                        w_grp = df_w.groupby([group_col,'Store', 'NAV'])[['Qty', 'Val']].sum().reset_index().rename(columns={'Qty': 'Waste_Qty', 'Val': 'Waste_Val'})
-                    else:
-                        w_grp = pd.DataFrame(columns=[group_col, 'Store', 'NAV', 'Waste_Qty', 'Waste_Val'])
-
-                    df = pd.merge(d_grp, s_grp, on=[group_col,'Store', 'NAV'], how='outer').fillna(0)
-                    if not w_grp.empty:
-                        df = pd.merge(df, w_grp, on=[group_col,'Store', 'NAV'], how='outer').fillna(0)
-                    else:
-                        df['Waste_Qty'] = 0
-                        df['Waste_Val'] = 0
-                    
-                    df['Article_Code'] = df['NAV'].map(map_art).fillna("0")
-                    df.loc[df['Article_Code'] == "0", 'Article_Code'] = "Unmapped (NAV " + df['NAV'].astype(str) + ")"
-
-                    df['Item_Name'] = df['NAV'].map(map_name).fillna("Unknown Item")
-                    mask_unknown = df['Item_Name'] == "Unknown Item"
-                    df.loc[mask_unknown, 'Item_Name'] = "Item " + df.loc[mask_unknown, 'NAV'].astype(str)
-                    df['Profit'] = df['Sales_Val'] - df['Dist_Val']
-                    df['Profit_Qty'] = df['Sales_Qty'] - df ['Dist_Qty']
-                    df['Balance Stock'] = df['Dist_Qty'] - df['Sales_Qty']
-                    
-                    #Display whether Wastage or Balance Stock in tabs
-                    is_dry = rpt in ["CS_DRY","SS_DRY", "NTUC_DRY"]
-
-                    if is_dry:
-                        qty_display_list = ['Dist_Qty','Sales_Qty','Balance Stock']
-                        val_display_list = ['Dist_Val','Sales_Val','Profit']
-                    else:
-                        qty_display_list =['Dist_Qty','Sales_Qty','Waste_Qty','Profit_Qty']
-                        val_display_list =['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit']
-
-                    # Views
-                    v_s_qty = df.groupby([group_col,'Store'])[qty_display_list].sum()
-                    v_s_qty['STR%'] = (v_s_qty['Sales_Qty']/ v_s_qty['Dist_Qty'])*100
-                    v_s_qty['STR%'] = v_s_qty['STR%'].replace([np.inf, -np.inf], 0).fillna(0)
-                    v_s_val = df.groupby([group_col,'Store'])[val_display_list].sum()
-                    v_i_qty = df.groupby([group_col,'Article_Code', 'Item_Name'])[qty_display_list].sum()
-                    v_i_qty['STR%'] = (v_i_qty['Sales_Qty'] / v_i_qty['Dist_Qty'] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-                    v_i_qty = v_i_qty.sort_values('Dist_Qty', ascending=False)
-                    v_i_val = df.groupby([group_col,'Article_Code', 'Item_Name'])[['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit']].sum().sort_values('Dist_Val', ascending=False)
-                    v_top10_all = df.groupby([group_col, 'Item_Name'])['Sales_Val'].sum().reset_index()
-
-
-
-                    st.subheader(f"📊 {rpt} Live Report ({sel_year}-{ft})")
-                    t1, t2, t3, t4, t5, t6 = st.tabs(["📦 QTY (Store)", "💰 $ (Store)", "📦 QTY (Item)", "💰 $ (Item)", "🏆 Top 10", "📉 Bottom 10"])
-
-                    def display_drilldown(tab, main_df, detail_cols, sort_col, fmt, time_col):
-                        with tab:
-                            if main_df.empty:
-                                st.info("No data.")
-                                return
-                            # 1. Store Summary
-                            summary = main_df.unstack(level=0, fill_value=0)
-                            # Calculate Totals
-                            metrics = summary.columns.get_level_values(0).unique()
-                            for m in metrics:
-                                m_cols = summary.loc[:, (m, slice(None))].columns
-                                for c in m_cols:
-                                    summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
-                                summary[(m, 'TOTAL')] = summary[m_cols].sum(axis=1)
-                            if (sort_col, 'TOTAL') in summary.columns:
-                                summary = summary.sort_values((sort_col, 'TOTAL'), ascending=False)
-                            st.markdown(f"### 🏢 Store Summary")
-                            st.dataframe(summary.style.format(fmt), height=400, use_container_width=True)
-                            st.divider()
-                            # 2. FAST DRILL-DOWN (Selectbox instead of Loop)
-                            st.markdown("### 🔍 Select Store to View Details")
-                            store_options = [f"{s}" for s in summary.index]
-
-                            for store in summary.index:
-                                val = summary.loc[store, (sort_col, 'TOTAL')]
-                                store_options.append(f"{store} | Total {sort_col}: {val:,.2f}")
-                            sel_store_str = st.selectbox(f"Select Store ({sort_col})", options=store_options, key=f"sel_{sort_col}")
-                            if sel_store_str:
-                                selected_store = sel_store_str.split(" | ")[0]
-                                store_mask = df['Store'] == selected_store
-                                # Check if time_col in df columns for groupby
-                                if time_col not in df.columns:
-                                    st.warning(f"Cannot drill down: '{time_col}' not found in data columns.")
-                                    return
-                                detail_view = df[store_mask].groupby(['Item_Name', time_col])[detail_cols].sum().unstack(level=1, fill_value=0)
-                                d_metrics = detail_view.columns.get_level_values(0).unique()
-                                for m in d_metrics:
-                                    m_cols = detail_view.loc[:, (m, slice(None))].columns
-                                    for c in m_cols:
-                                        detail_view[c] = pd.to_numeric(detail_view[c], errors='coerce').fillna(0)
-                                    detail_view[(m, 'TOTAL')] = detail_view[m_cols].sum(axis=1)
-                                if (sort_col, 'TOTAL') in detail_view.columns:
-                                    detail_view = detail_view.sort_values((sort_col, 'TOTAL'), ascending=False)
-                                st.markdown(f"#### 📦 Items in {selected_store}")
-                                st.dataframe(detail_view.style.format(fmt), width='stretch')
-                    
-                    display_drilldown(
-                        t1, 
-                        v_s_qty, 
-                        qty_display_list, # Columns to show in detail
-                        'Sales_Qty', # Column to sort by
-                        "{:,.2f}",group_col
-                    ) 
-
-                    # Tab 2: Store Val (Drilldown shows Dist, Sales, Waste)
-                    display_drilldown(
-                        t2, 
-                        v_s_val, 
-                        val_display_list, # Columns to show in detail
-                        'Sales_Val', # Column to sort by
-                        "{:,.2f}",group_col
-                    )
-                    def display_item_drilldown(tab, detail_cols, sort_col, fmt, time_col):
-                        with tab:
-                            
-                            summary = df.groupby(['Item_Name', time_col])[detail_cols].sum().unstack(level=1, fill_value=0)
-                            if summary.empty:
-                                st.info("No data.")
-                                return
-                            # Calculate Totals
-                            metrics = summary.columns.get_level_values(0).unique()
-                            for m in metrics:
-                                m_cols = summary.loc[:, (m, slice(None))].columns
-                                for c in m_cols:
-                                    summary[c] = pd.to_numeric(summary[c], errors='coerce').fillna(0)
-                                summary[(m, 'TOTAL')] = summary[m_cols].sum(axis=1)
-
-                            if 'Sales_Qty' in metrics and 'Dist_Qty' in metrics:
-                                sales_total = summary[('Sales_Qty', 'TOTAL')]
-                                dist_total =summary[('Dist_Qty','TOTAL')]
-                                str_vals = (sales_total/dist_total * 100).replace([float('inf'), -float('inf')], 0)
-                                summary[('STR%', 'TOTAL')] = str_vals.round(2)
-                            if (sort_col, 'TOTAL') in summary.columns:
-                                summary = summary.sort_values((sort_col, 'TOTAL'), ascending=False)
-                            st.markdown(f"### 📦 Item Summary")
-                            st.dataframe(summary.style.format(fmt), height=400, use_container_width=True)
-                            st.divider()
-                            # 2. FAST DRILL-DOWN
-                            st.markdown("### 🔍 Select Item to View Stores")
-                            limit_list = summary.index[:2000]
-                            item_options = []
-                            for item in limit_list:
-                                val = summary.loc[item, (sort_col, 'TOTAL')]
-                                item_options.append(f"{item} | Total {sort_col}: {val:,.2f}")
-                            sel_item_str = st.selectbox(f"Select Item ({sort_col})", options=item_options, key=f"sel_item_{sort_col}")
-                            if sel_item_str:
-                                selected_item = sel_item_str.split(" | ")[0]
-                                item_mask = df['Item_Name'] == selected_item
-                                if time_col not in df.columns:
-                                    st.warning(f"Cannot drill down: '{time_col}' not found in data columns.")
-                                    return
-                                item_view = df[item_mask].groupby(['Store', time_col])[detail_cols].sum().unstack(level=1, fill_value=0)
-                                d_metrics = item_view.columns.get_level_values(0).unique()
-                                for m in d_metrics:
-                                    m_cols = item_view.loc[:, (m, slice(None))].columns
-                                    for c in m_cols:
-                                        item_view[c] = pd.to_numeric(item_view[c], errors='coerce').fillna(0)
-                                    item_view[(m, 'TOTAL')] = item_view[m_cols].sum(axis=1)
-                                if (sort_col, 'TOTAL') in item_view.columns:
-                                    item_view = item_view.sort_values((sort_col, 'TOTAL'), ascending=False)
-                                st.markdown(f"#### 📍 Stores selling {selected_item}")
-                                st.dataframe(item_view.sort_index(axis=1).style.format(fmt), width='stretch')
-
-                    # Tab 3 & 4: Item Views (Keep as simple Pivot)
-                    def display_simple_pivot(tab, df_in, fmt,time_col):
-                        with tab:
-                            try:
-                                p = df_in.unstack(level=time_col, fill_value=0)
-                                p['Total'] = p.sum(axis=1)
-                                p = p.sort_values('Total', ascending=False).drop(columns=['Total'])
-                                st.dataframe(p.style.format(fmt))
-
-                                st.markdown("---")
-                                st.markdown("### 🔍 Store Details (Click to Expand)")
-                                
-                            except: st.info("No data")
-
-                    display_item_drilldown(
-                        t3, 
-                        qty_display_list, 
-                        'Sales_Qty', "{:,.2f}",group_col
-                    )
-
-                    # Tab 4: Item Val (Item -> Stores) - NEW LOGIC
-                    display_item_drilldown(
-                        t4,
-                        val_display_list, 
-                        'Sales_Val', "{:,.2f}",group_col
-                    )
-
-                    with t5:
-                        if not v_top10_all.empty:
-                        
-                            top10_grp = v_top10_all.groupby('Item_Name')['Sales_Val'].sum()
-                            top10_items = top10_grp.nlargest(10).index.tolist()
-                            top10_df = v_top10_all[v_top10_all['Item_Name'].isin(top10_items)].set_index([group_col, 'Item_Name'])
-                            v_top10 = df.groupby('Item_Name')['Sales_Val'].sum().sort_values(ascending=False).head(10).reset_index()
-
-                            
-                            try:
-                                t10_pivot = top10_df.unstack(level=0, fill_value=0)
-                                t10_pivot[('Sales_Val', 'TOTAL')] = t10_pivot['Sales_Val'].sum(axis=1)
-                                t10_pivot = t10_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=False)
-                                st.dataframe(t10_pivot.style.format("{:,.2f}"))
-                                chart_data = t10_pivot[('Sales_Val', 'TOTAL')].rename("Total Sales")
-                                st.bar_chart(chart_data)
-                                
-                            except Exception as e:
-                                st.error(f"Error in Top 10: {e}")
-                        else:
-                            st.info("No Sales Data available for Top 10.")
-                    
-                    with t6:
-                        valid_items_df = v_top10_all[
-                            (~v_top10_all['Item_Name'].str.startswith('Item ')) & 
-                            (v_top10_all['Item_Name'] != 'Unknown Item')
-                        ]
-                        
-                        if not valid_items_df.empty:
-                            bottom10_grp = valid_items_df.groupby('Item_Name')['Sales_Val'].sum()
-                            bottom10_items = bottom10_grp.nsmallest(10).index.tolist()
-                            
-                            bottom10_df = valid_items_df[valid_items_df['Item_Name'].isin(bottom10_items)].set_index([group_col, 'Item_Name'])
-                            
-                            try:
-                                b10_pivot = bottom10_df.unstack(level=0, fill_value=0)
-                                b10_pivot[('Sales_Val', 'TOTAL')] = b10_pivot['Sales_Val'].sum(axis=1)
-                                b10_pivot = b10_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=True)
-                                st.dataframe(b10_pivot.style.format("${:,.2f}"))
-                                chart_data = b10_pivot[('Sales_Val', 'TOTAL')].rename("Total Sales")
-                                st.bar_chart(chart_data)
-                            except Exception as e:
-                                st.error(f"Error in Bottom 10: {e}")
-                        else:
-                            st.info("No valid sales data for Bottom 10.")
-                    st.divider()
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        # 1. Store Qty (Pivoted like visual)
-                        qty_pivot = v_s_qty.unstack(level=0).fillna(0)
-                        metrics = qty_pivot.columns.get_level_values(0).unique()
-                        for m in metrics:
-                            m_cols = qty_pivot.loc[:, (m, slice(None))].columns
-                            for c in m_cols:
-                                qty_pivot[c] = pd.to_numeric(qty_pivot[c], errors='coerce').fillna(0)
-                            qty_pivot[(m, 'TOTAL')] = qty_pivot[m_cols].sum(axis=1)
-                        if ('Sales_Qty', 'TOTAL') in qty_pivot.columns:
-                            qty_pivot = qty_pivot.sort_values(('Sales_Qty', 'TOTAL'), ascending=False)
-                        if ('Dist_Qty', 'TOTAL') in qty_pivot.columns:
-                            qty_pivot = qty_pivot.sort_values(('Dist_Qty', 'TOTAL'), ascending=False)
-                        qty_pivot.to_excel(writer, sheet_name='Store QTY Analysis')
-                        
-                        # 2. Store Value (Pivoted like visual)
-                        val_pivot = v_s_val.unstack(level=0).fillna(0)
-                        metrics = val_pivot.columns.get_level_values(0).unique()
-                        for m in metrics:
-                            m_cols = val_pivot.loc[:, (m, slice(None))].columns
-                            for c in m_cols:
-                                val_pivot[c] = pd.to_numeric(val_pivot[c], errors='coerce').fillna(0)
-                            val_pivot[(m, 'TOTAL')] = val_pivot[m_cols].sum(axis=1)
-                        if ('Sales_Val', 'TOTAL') in val_pivot.columns:
-                            val_pivot = val_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=False)
-                        if ('Dist_Val', 'TOTAL') in val_pivot.columns:
-                            val_pivot = val_pivot.sort_values(('Dist_Val', 'TOTAL'), ascending=False)
-                        val_pivot.to_excel(writer, sheet_name='Store Value Analysis')
-                        
-                        # 3. Item Qty Summary (Top Items by Qty)
-                        item_qty_pivot = v_i_qty.unstack(level=0).fillna(0)
-                        metrics = item_qty_pivot.columns.get_level_values(0).unique()
-                        for m in metrics:
-                            m_cols = item_qty_pivot.loc[:, (m, slice(None))].columns
-                            for c in m_cols:
-                                item_qty_pivot[c] = pd.to_numeric(item_qty_pivot[c], errors='coerce').fillna(0)
-                            item_qty_pivot[(m, 'TOTAL')] = item_qty_pivot[m_cols].sum(axis=1)
-                        if ('Sales_Qty', 'TOTAL') in item_qty_pivot.columns:
-                            item_qty_pivot = item_qty_pivot.sort_values(('Sales_Qty', 'TOTAL'), ascending=False)
-                        if ('Dist_Qty', 'TOTAL') in item_qty_pivot.columns:
-                            item_qty_pivot = item_qty_pivot.sort_values(('Dist_Qty', 'TOTAL'), ascending=False)
-                        item_qty_pivot.to_excel(writer, sheet_name='Item QTY Summary')
-
-                        # 4. Item Value Summary (Top Items by Value)
-                        item_val_pivot = v_i_val.unstack(level=0).fillna(0)
-                        metrics = item_val_pivot.columns.get_level_values(0).unique()
-                        for m in metrics:
-                            m_cols = item_val_pivot.loc[:, (m, slice(None))].columns
-                            for c in m_cols:
-                                item_val_pivot[c] = pd.to_numeric(item_val_pivot[c], errors='coerce').fillna(0)
-                            item_val_pivot[(m, 'TOTAL')] = item_val_pivot[m_cols].sum(axis=1)
-                        if ('Sales_Val', 'TOTAL') in item_val_pivot.columns:
-                            item_val_pivot = item_val_pivot.sort_values(('Sales_Val', 'TOTAL'), ascending=False)
-                        if ('Dist_Val', 'TOTAL') in item_val_pivot.columns:
-                            item_val_pivot = item_val_pivot.sort_values(('Dist_Val', 'TOTAL'), ascending=False)
-                        item_val_pivot.to_excel(writer, sheet_name='Item Value Summary')
-
-                        # 5. Top 10 Data
-                        if not v_top10_all.empty:
-                            # Group to get total sales per item for the list
-                            top10_export = v_top10_all.groupby('Item_Name')['Sales_Val'].sum().sort_values(ascending=False).head(10).reset_index()
-                            top10_export.to_excel(writer, sheet_name='Top 10 Items', index=False)
-
-                        # 6. Master Data (Raw combined data)
-                        df.to_excel(writer, sheet_name='Master Data Raw', index=False)
-
-                    excel_data = output.getvalue()
-                    
-                    col_d1, col_d2 = st.columns([2,1])
-                    with col_d1:
-                         st.download_button(
-                            label="📥 Download Full Excel Report",
-                            data=excel_data,
-                            file_name=f"Report_{sel_year}_{rpt}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            help="Downloads a multi-tab Excel file with all summaries."
-                        )
-
-                    c1, c2 = st.columns([3, 1])
-                    rep_name = c1.text_input("Report Name (e.g. Week48)", "")
-                    if c2.button("💾 Save All to History"):
-                        if urls['h'] and rep_name:
-                            with st.spinner("Saving..."):
-                                write_to_sheet(urls['h'], f"Rep_{rep_name}_StoreQty", v_s_qty)
-                                write_to_sheet(urls['h'], f"Rep_{rep_name}_StoreVal", v_s_val)
-                                write_to_sheet(urls['h'], f"Rep_{rep_name}_ItemQty", v_i_qty)
-                                write_to_sheet(urls['h'], f"Rep_{rep_name}_ItemVal", v_i_val)
-                                write_to_sheet(urls['h'], f"Rep_{rep_name}_Top10", v_top10)
-                                write_to_sheet(urls['h'], f"Rep_{rep_name}_Master", df)
-                                st.success("✅ Saved!")
-                        else: st.error("Need URL & Name")
-
-    elif app_mode == "🗄️ Saved Reports":
-        if urls['h']:
-            reps = get_saved_reports(urls['h'])
-            if reps:
-                sel = st.selectbox("Select Report:", reps)
-                
-                if sel:
-                    # 1. LOAD DATA FIRST (Inside Spinner)
-                    loaded_data = {}
-                    sheet_tabs = ["StoreQty", "StoreVal", "ItemQty", "ItemVal", "Top10", "Master"]
-                    
-                    with st.spinner("Downloading Report Data..."):
-                        try:
-                            client = get_gspread_client()
-                            sh = client.open_by_url(urls['h'])
-                            
-                            # Pre-fetch all necessary tabs to avoid UI lag later
-                            for tab_name in sheet_tabs:
-                                try:
-                                    full_data = sh.worksheet(f"Rep_{sel}_{tab_name}").get_all_values()
-                                    if full_data:
-                                        header = full_data[0]
-                                        rows = full_data[1:]
-                                        loaded_data[tab_name] = pd.DataFrame(rows, columns=header)
-                                    else:
-                                        loaded_data[tab_name] = pd.DataFrame()
-                                except:
-                                    loaded_data[tab_name] = pd.DataFrame()
-                                    
-                        except Exception as e:
-                            st.error(f"Connection Error: {e}")
-                            st.stop()
-
-                    # 2. RENDER UI (Outside Spinner - Prevents White Screen Error)
-                    if loaded_data:
-                        # Create Tabs
-                        t1, t2, t3, t4, t5, t6 = st.tabs([
-                            "📦 Store Qty", 
-                            "💰 Store Val", 
-                            "📦 Item Qty", 
-                            "💰 Item Val", 
-                            "🏆 Top 10", 
-                            "📝 Master Data"
-                        ])
-
-                        # Render Dataframes safely
-                        with t1: 
-                            st.dataframe(loaded_data.get("StoreQty", pd.DataFrame()), use_container_width=True)
-                        
-                        with t2: 
-                            st.dataframe(loaded_data.get("StoreVal", pd.DataFrame()), use_container_width=True)
-                        
-                        with t3: 
-                            st.dataframe(loaded_data.get("ItemQty", pd.DataFrame()), use_container_width=True)
-                        
-                        with t4: 
-                            st.dataframe(loaded_data.get("ItemVal", pd.DataFrame()), use_container_width=True)
-                        
-                        with t5: 
-                            df_top = loaded_data.get("Top10", pd.DataFrame())
-                            st.dataframe(df_top, use_container_width=True)
-                            # Try to render chart if data exists
-                            if not df_top.empty and 'Total Sales' in df_top.columns:
-                                try:
-                                    # Ensure numeric for chart
-                                    df_top['Total Sales'] = pd.to_numeric(df_top['Total Sales'], errors='coerce')
-                                    st.bar_chart(df_top.set_index(df_top.columns[0])['Total Sales'])
-                                except: pass
-
-                        with t6: 
-                            st.dataframe(loaded_data.get("Master", pd.DataFrame()), use_container_width=True)
+  
