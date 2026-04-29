@@ -129,6 +129,7 @@ def normalize_store_name(name, report_type='CS'):
         name = re.sub(r'^\d+\s*-\s*', '', name)
         name = name.replace('FPX-', '').strip()
         if name == 'BUKIT TIMAH PLAZA-PM' : return 'BUKIT TIMAH PLAZA'
+        if name == 'CORONATION PLAZA BUKIT TIMAH' : return 'BUKIT TIMAH PLAZA'
         if name == 'CLEMENTI MALL-PM' : return 'CLEMENTI MALL'
         if name == 'FUNAN-PM' : return 'FUNAN'
         if name == 'BALMORAL PLAZA-PM' : return 'BALMORAL PLAZA'
@@ -350,20 +351,20 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     nav_to_article_map = {} 
 
     if report_type =="CS":
-        db_cols = {'Article': ['Article', 'ITEMCODE'], 'NAV': ['NAV', 'NAV_CODE', 'No.'], 'ArtDesc': ['Article Description', 'ArticleDesc'], 'NavDesc': ['NAV description', 'Description']}
+        db_cols = {'Article': ['Article', 'ITEMCODE'], 'NAV': ['NAV', 'NAV_CODE', 'No.'], 'ArtDesc': ['Article Description', 'ArticleDesc'], 'NavDesc': ['NAV description', 'Description'],'UOM': ['UOM']}
         sales_cols ={'Article': ['Article', 'ITEMCODE'], 'Qty': ['Quantity','QTY','SALESQTY','Billed Quantity'], 'Val': ['Amount','SALESAMOUNT','Total Amount'], 'Store': ['STOREDESC', 'Store name'], 'Date': ['TRXDATE','Date'], 'Name': ['ITEMDESC', 'Description', 'Name']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['External Doc No.']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['Store', 'LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
 
     elif report_type == "SS":
-        db_cols = {'Article': ['ITEM CODE', 'Article'], 'NAV': ['NAV CODE', 'NAV'], 'ArtDesc': ['DESCRIPTION', 'Article Description'], 'NavDesc': ['NAV Description']}
+        db_cols = {'Article': ['ITEM CODE', 'Article'], 'NAV': ['NAV CODE', 'NAV'], 'ArtDesc': ['DESCRIPTION', 'Article Description'], 'NavDesc': ['NAV Description'],'UOM': ['UOM']}
         # Sales: ITEM CODE, OUTLET, QTY, SALES BEF GST
         sales_cols = {'Article': ['ITEM CODE', 'Article'], 'Qty': ['QTY', 'Quantity'], 'Val': ['SALES BEF GST', 'Total Amount', 'Amount'], 'Store': ['OUTLET', 'Store'], 'Date': ['Date', 'TRXDATE'], 'Name': ['DESCRIPTION', 'Name']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['External Doc No.']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['Store', 'LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
 
     elif report_type =="NTUC":
-        db_cols = {'Article': ['cno_sku'], 'NAV': ['id'], 'ArtDesc': ['name1'], 'NavDesc': ['name2']}
+        db_cols = {'Article': ['cno_sku'], 'NAV': ['id'], 'ArtDesc': ['name1'], 'NavDesc': ['name2'],'UOM': ['erp_uom2']}
         sales_cols = {'Store': ['1st Column'], 'Raw_Item': ['2nd Column']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['External Doc No.']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['Store', 'LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
@@ -431,6 +432,71 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             if 'Unit2' in df_uom.columns:
                 unit2_mapping = df_uom.set_index('Desc')['Unit2'].astype(str).str.upper().str.strip().to_dict()
 
+    # --- C. DISTRIBUTION -
+    # d_map = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['Customer']}
+    df_dist = find_correct_header_row(df_dist_raw, dist_cols, "Dist Sheet")
+    if df_dist is None: return None
+    df_dist = strict_rename(df_dist, dist_cols)
+    
+    if 'Store' in df_dist.columns:
+        if report_type =='CS':
+            mask = df_dist['Store'].astype(str).str.upper().str.contains('CS |COLD STORAGE|CS_|COMPASS ONE|MP |NOVENA |JS |MARINA |GT |FAR ', regex=True, na=False)
+            df_dist=df_dist[mask]
+        elif report_type == 'SS':
+            mask = df_dist['Store'].astype(str).str.upper().str.contains(r'^Sheng Siong|^SS |^SS_', regex=True, na=False)
+            df_dist=df_dist[mask]
+        elif report_type == 'NTUC':
+            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'NTUC', regex=True, na=False)
+            df_dist = df_dist[mask]
+        elif report_type == 'CS_DRY':
+            mask = df_dist['Store'].astype(str).str.upper().str.contains('CS |COLD STORAGE|CS_|COMPASS ONE|MP |NOVENA |JS |MARINA |GT |FAR ', regex=True, na=False)
+            df_dist = df_dist[mask]
+        elif report_type == 'SS_DRY':
+            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'^Sheng Siong|^SS|^SS_', regex=True, na=False)
+            df_dist=df_dist[mask]
+        elif report_type == 'NTUC_DRY':
+            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'NC', regex=True, na=False)
+            df_dist = df_dist[mask]
+        
+
+
+       
+
+    
+    if 'Chain' in df_dist.columns and 'Store' not in df_dist.columns:
+         mask_chain = df_dist['Chain'].astype(str).str.upper().str.contains('HX|', na=False)
+         if mask_chain.sum() > 0: df_dist = df_dist[mask_chain]
+    
+    df_dist['NAV'] = df_dist['NAV'].apply(clean_id)
+    if 'Name' in df_dist.columns:
+        dist_names = df_dist[df_dist['NAV'] != "0"].set_index('NAV')['Name'].to_dict()
+        for k, v in dist_names.items():
+            if k not in master_name_map: master_name_map[k] = v
+
+    df_dist['Store'] = df_dist['Store'].apply(lambda x: normalize_store_name(x, report_type))
+    df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce')
+    df_dist['Year'] = df_dist['Date'].dt.year.astype(str).str.replace(r'\.0$', '', regex=True)
+    df_dist['Month'] = df_dist['Date'].dt.month_name().str[:3]
+    df_dist['Week'] = df_dist['Date'].dt.strftime('%Y-W%U')
+    df_dist['Qty'] = df_dist['Qty'].apply(clean_currency)
+    # if report_type == 'SS_DRY':
+    #     df_dist['Month'] = "Annual"
+    #     df_dist['Week'] = "Annual"
+    
+    if report_type == "CS_DRY" or report_type == "SS_DRY" or report_type == "NTUC_DRY":
+        pass
+    else:
+        if 'UOM' in df_dist.columns:
+            raw_qty = pd.to_numeric(df_dist['Qty'], errors='coerce').fillna(0)
+            #raw_qty1 = pd.to_numeric(df_sales['Qty'], errors='coerce').fillna(0)
+            uom_factor = df_dist['UOM'].apply(parse_uom_factor)
+            df_dist['Qty'] = raw_qty * uom_factor
+            
+            
+
+
+    cost = df_dist['Cost'].apply(clean_currency) if 'Cost' in df_dist.columns else 0
+    df_dist['Val'] = df_dist['Qty'] * (cost/2)
 
     # --- B. SALES ---
     if report_type == "NTUC" or report_type == "NTUC_DRY":
@@ -540,10 +606,10 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             else:
                 factor = parse_uom_factor(row['UOM_Str'])
                 return row['Qty'] * factor
-                
+        
         df_sales['Qty'] = df_sales.apply(calc_qty, axis=1)
         df_sales = df_sales.drop(columns=['UOM_Str', 'RSP_Val', 'DB_Item_Name', 'Unit2'], errors='ignore')
-
+        
             # Cold Storage: 2025.12.31 (Year.Month.Day)
     # Handle Sales Dates
     if 'Date' in df_sales.columns:
@@ -591,69 +657,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     #     df_sales['Month'] = "Annual"
     #     df_sales['Week'] = "Annual"
 
-    # --- C. DISTRIBUTION -
-    # d_map = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference', 'key'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date','Date'], 'Chain': ['Customer']}
-    df_dist = find_correct_header_row(df_dist_raw, dist_cols, "Dist Sheet")
-    if df_dist is None: return None
-    df_dist = strict_rename(df_dist, dist_cols)
     
-    if 'Store' in df_dist.columns:
-        if report_type =='CS':
-            mask = df_dist['Store'].astype(str).str.upper().str.contains('CS |COLD STORAGE|CS_|COMPASS ONE|MP |NOVENA |JS |MARINA |GT |FAR ', regex=True, na=False)
-            df_dist=df_dist[mask]
-        elif report_type == 'SS':
-            mask = df_dist['Store'].astype(str).str.upper().str.contains(r'^Sheng Siong|^SS |^SS_', regex=True, na=False)
-            df_dist=df_dist[mask]
-        elif report_type == 'NTUC':
-            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'NTUC', regex=True, na=False)
-            df_dist = df_dist[mask]
-        elif report_type == 'CS_DRY':
-            mask = df_dist['Store'].astype(str).str.upper().str.contains('CS |COLD STORAGE|CS_|COMPASS ONE|MP |NOVENA |JS |MARINA |GT |FAR ', regex=True, na=False)
-            df_dist = df_dist[mask]
-        elif report_type == 'SS_DRY':
-            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'^Sheng Siong|^SS|^SS_', regex=True, na=False)
-            df_dist=df_dist[mask]
-        elif report_type == 'NTUC_DRY':
-            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'NC', regex=True, na=False)
-            df_dist = df_dist[mask]
-        
-
-
-       
-
-    
-    if 'Chain' in df_dist.columns and 'Store' not in df_dist.columns:
-         mask_chain = df_dist['Chain'].astype(str).str.upper().str.contains('HX|', na=False)
-         if mask_chain.sum() > 0: df_dist = df_dist[mask_chain]
-    
-    df_dist['NAV'] = df_dist['NAV'].apply(clean_id)
-    if 'Name' in df_dist.columns:
-        dist_names = df_dist[df_dist['NAV'] != "0"].set_index('NAV')['Name'].to_dict()
-        for k, v in dist_names.items():
-            if k not in master_name_map: master_name_map[k] = v
-
-    df_dist['Store'] = df_dist['Store'].apply(lambda x: normalize_store_name(x, report_type))
-    df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce')
-    df_dist['Year'] = df_dist['Date'].dt.year.astype(str).str.replace(r'\.0$', '', regex=True)
-    df_dist['Month'] = df_dist['Date'].dt.month_name().str[:3]
-    df_dist['Week'] = df_dist['Date'].dt.strftime('%Y-W%U')
-    df_dist['Qty'] = df_dist['Qty'].apply(clean_currency)
-    # if report_type == 'SS_DRY':
-    #     df_dist['Month'] = "Annual"
-    #     df_dist['Week'] = "Annual"
-    
-    if report_type == "CS_DRY" or report_type == "SS_DRY" or report_type == "NTUC_DRY":
-        pass
-    else:
-        if 'UOM' in df_dist.columns:
-            raw_qty = pd.to_numeric(df_dist['Qty'], errors='coerce').fillna(0)
-            uom_factor = df_dist['UOM'].apply(parse_uom_factor)
-            df_dist['Qty'] = raw_qty * uom_factor 
-        
-
-    cost = df_dist['Cost'].apply(clean_currency) if 'Cost' in df_dist.columns else 0
-    df_dist['Val'] = df_dist['Qty'] * cost
-
     # --- D. WASTAGE ---
     if report_type == "CS_DRY" or report_type == "SS_DRY" or report_type== "NTUC_DRY":
         # No wastage file for CS_DRY
