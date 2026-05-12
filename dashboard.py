@@ -401,9 +401,9 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
 
     df_db['Article'] = df_db['Article'].apply(clean_id)
     df_db['NAV'] = df_db['NAV'].apply(clean_id)
-    df_db = df_db[df_db['NAV'] != "0"].drop_duplicates('Article')
+    df_db = df_db[df_db['NAV'] != "0"].drop_duplicates('NAV')
     
-    db_mapping_forward = df_db.set_index('Article')['NAV'].to_dict()
+    db_mapping_forward = df_db.drop_duplicates('Article').set_index('Article')['NAV'].to_dict()
     df_valid_db = df_db[df_db['NAV'] != "0"]
     nav_to_article_map = df_valid_db.drop_duplicates('NAV').set_index('NAV')['Article'].to_dict()
 
