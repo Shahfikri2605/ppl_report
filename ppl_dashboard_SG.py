@@ -232,17 +232,19 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
     
     elif report_type == "NTUC":
-        db_cols = {'Article': ['cno_sku'], 'NAV': ['partno'], 'ArtDesc': ['name2'], 'NavDesc': ['name2']}
-        sales_cols = {'Store': ['1st Column'], 'Raw_Item': ['2nd Column']}
-        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['External Doc No.'], 'UOM': ['Unit of Measure', 'UOM'], 'Name': ['USOFT product description', 'Description', 'Name'], 'Cost': ['Unit Price Excl. GST'], 'Date': ['Posting Date','Date'], 'Chain': ['Transfer-to Code']}
+        db_cols = {'Article': ['Customer Item code'], 'NAV': ['Nav Code'], 'ArtDesc': ['Customer Description'], 'NavDesc': ['Nav description'], 'UOM': ['UOM']}
+        sales_cols = {'Article': ['item code'], 'Qty': ['quantity'], 'Val': ['sales'], 'Store': ['location code'], 'Date': ['date'], 'Name': ['description']}
+        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
+        waste_cols = {'NAV': ['NAV_CODE'], 'Qty': ['QTY'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
+    
 
     # --- A. DATABASE ---
     df_db = find_correct_header_row(df_db_raw,db_cols, "DB Sheet")
     if df_db is None: return None
     df_db = strict_rename(df_db, db_cols)
 
-    if report_type == "NTUC":
-        df_db['NAV'] = df_db['NAV'].astype(str).apply(lambda x: x.split('-')[0] if '-' in x else x)
+    # if report_type == "NTUC":
+    #     df_db['NAV'] = df_db['NAV'].astype(str).apply(lambda x: x.split('-')[0] if '-' in x else x)
 
     df_db['Article'] = df_db['Article'].apply(clean_id)
     df_db['NAV'] = df_db['NAV'].apply(clean_id)
@@ -255,7 +257,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
 
     if 'ArtDesc' in df_db.columns:
         df_db['Final_Name'] = df_db['ArtDesc']
-        if report_type == "CS" or "SS":
+        if report_type == "CS" or "SS" or "NTUC":
         # For CS, prefer NAV Description over Cust Description
             df_db['Final_Name'] = df_db['NavDesc'].fillna(df_db['ArtDesc'])
         else:
@@ -274,9 +276,10 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     loc_map_tfp_sales = {}
     loc_map_cs_sales ={}
     loc_map_ss_sales={}
+    loc_map_nt_sales={}
     loc_map_nav = {}
 
-    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","SS"] and df_loc_raw is not None:
+    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","SS","NTUC"] and df_loc_raw is not None:
         if "AEON" in report_type:
             loc_sheet_cols = {'AeonCode': ['AEON CODE'], 'NavCode': ['NAV LOC CODE'], 'NavLoc': ['NAV LOC NAME']}
             sheet_title = "Loc"
@@ -286,6 +289,9 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         elif "SS" in report_type:
             loc_sheet_cols = {'SsCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
             sheet_title = "DB LOCATION"
+        elif "NTUC" in report_type:
+            loc_sheet_cols = {'NtCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
+            sheet_title = "Location DB"
         else:
             # TFP pulls Loc (BBT), Code (3001), and Name
             loc_sheet_cols = {'TfpLoc': ['Loc'], 'TfpCode': ['Code'], 'NavLoc': ['Name']}
@@ -314,6 +320,11 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
                     nc = str(row.get('NavCode', '')).replace('.0', '').strip()
                     if ss and ss not in ["NAN", "NONE", ""]: loc_map_ss_sales[ss] = nav_loc
                     if nc and nc not in ["NAN", "NONE", ""]: loc_map_nav[nc] = nav_loc
+                elif "NTUC" in report_type:
+                    nt = str(row.get('NtCode', '')).replace('.0', '').strip()
+                    nc = str(row.get('NavCode', '')).replace('.0', '').strip()
+                    if nt and nt not in ["NAN", "NONE", ""]: loc_map_nt_sales[nt] = nav_loc
+                    if nc and nc not in ["NAN", "NONE", ""]: loc_map_nav[nc] = nav_loc
                 else:
                     tc = str(row.get('TfpLoc', '')).strip().upper()
                     nc = str(row.get('TfpCode', '')).replace('.0', '').strip()
@@ -329,8 +340,8 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             df_uom = df_uom.dropna(subset=['Desc', 'RSP'])
             rsp_mapping = df_uom.set_index('Desc')['RSP'].apply(clean_currency).to_dict()
 
-    # --- B. SALES ---
-    if report_type == "NTUC" or report_type == "NTUC_DRY":
+    
+    if  report_type == "NTUC_DRY":
         id_vars = ['Store', 'Raw_Item']
         melt_val = pd.DataFrame()
         melt_qty = pd.DataFrame()
@@ -416,6 +427,12 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             if code == "" or code == "0": return "UNKNOWN"
             return loc_map_ss_sales.get(code, f"UNMAPPED - {code}")
         df_sales['Store'] = df_sales['Store'].apply(map_ss_sales)
+    elif "NTUC" in report_type:
+        def map_nt_sales(x):
+            code = str(x).replace('.0', '').strip()
+            if code == "" or code == "0": return "UNKNOWN"
+            return loc_map_nt_sales.get(code, f"UNMAPPED - {code}")
+        df_sales['Store'] = df_sales['Store'].apply(map_nt_sales)
     elif "TFP" in report_type:
         def map_tfp_sales(x):
             # Split "BBT - BIG BATAI" and grab the first part "BBT"
@@ -431,10 +448,16 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_sales['Val'] = df_sales['Val'].apply(clean_currency)*0.8
     elif report_type in ['TFP','TFP DF']:
         df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.75
+    elif report_type =='CS':
+        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.73
+    elif report_type =='NTUC':
+        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.685
+    elif report_type == 'SS':
+        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.76
     else:
         df_sales['Val'] = df_sales['Val'].apply(clean_currency)
     
-    if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','SS']:
+    if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','SS','NTUC']:
         df_sales['UOM_Str'] = df_sales['NAV'].map(uom_mapping).fillna('KG')
         df_sales['DB_Item_Name'] = df_sales['NAV'].map(df_db.set_index('NAV')['Final_Name'].to_dict())
         df_sales['RSP_Val'] = df_sales['DB_Item_Name'].map(rsp_mapping).fillna(0.0)
@@ -451,12 +474,12 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         if report_type == 'SS_DRY':
             df_sales['Year'] = df_sales['Date'].astype(str).replace(r'\.0$', '', regex=True)
             df_sales['Date'] = pd.to_datetime(df_sales['Year'] + "-01-01", errors='coerce')
-        elif report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF']:
+        elif report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','NTUC']:
             df_sales['Date'] = pd.to_datetime(df_sales['Date'], format='%d/%m/%Y', errors='coerce')
             df_sales['Year'] = df_sales['Date'].dt.year.astype('Int64').astype(str)
             df_sales['Month'] = df_sales['Date'].dt.month_name().str[:3]
             df_sales['Week'] = df_sales['Date'].apply(lambda x: f"{x.strftime('%Y')}-W{(int(x.strftime('%U')) + 1):02d}" if pd.notnull(x) else None)
-        elif report_type == 'SS':
+        elif report_type in ['SS']:
             df_sales['Date'] = pd.to_datetime(df_sales['Date'], format='%d-%m-%Y', errors='coerce')
             df_sales['Year'] = df_sales['Date'].dt.year.astype(str).str.replace(r'\.0$', '', regex=True)
             df_sales['Month'] = df_sales['Date'].dt.month_name().str[:3]
@@ -521,15 +544,12 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             
             df_dist = pd.concat([df_dist, df_dist2], ignore_index=True)
     if 'Store' in df_dist.columns:
-        if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','SS']:
+        if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','SS','NTUC']:
             # Aeon now uses numeric codes, so we relax the text filtering here to avoid wiping data before mapping
             pass 
         # elif report_type == 'TFP' or report_type == 'TFP DF':
         #     mask = df_dist['Store'].astype(str).str.upper().str.contains('VG|BIP|BBT|BSC', regex=True, na=False)
         #     df_dist=df_dist[mask]
-        elif report_type == 'NTUC':
-            mask = df_dist['Chain'].astype(str).str.upper().str.contains(r'NTUC', regex=True, na=False)
-            df_dist = df_dist[mask]
         elif report_type == 'CS_DRY':
             mask = df_dist['Store'].astype(str).str.upper().str.contains('CS |COLD STORAGE|CS_|COMPASS ONE|MP |NOVENA |JS |MARINA |GT |FAR ', regex=True, na=False)
             df_dist = df_dist[mask]
@@ -551,7 +571,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             if k not in master_name_map: master_name_map[k] = v
 
     # APPLY STORE MAPPINGS
-    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS"]:
+    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","NTUC","SS"]:
         def map_nav(x):
             val = str(x).replace('.0', '').strip()
             if val == "" or val == "0" or val.upper() == "TRANSFER": return "UNKNOWN"
@@ -600,7 +620,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_waste['NAV'] = df_waste['NAV'].apply(clean_id)
 
         # APPLY STORE MAPPINGS
-        if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","SS"]:
+        if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","SS","NTUC"]:
             def map_waste(x):
                 # 1. Split by '-' to get all parts
                 parts = str(x).split('-')
@@ -696,11 +716,11 @@ def main_app_interface(authenticator, name, permissions):
             if can_view("NTUC") and st.button("NTUC Vege"):
                 st.session_state['report_type'] = "NTUC"
                 st.session_state['urls'] = { 
-                    's': make_url(st.secrets["sheet_ids"]["tfp_sales"]),
-                    'db': make_url(st.secrets["sheet_ids"]["tfp_db"]),
-                    'd': make_url(st.secrets["sheet_ids"]["tfp_dist"]),
-                    'w': make_url(st.secrets["sheet_ids"]["tfp_waste"]),
-                    'h': make_url(st.secrets["sheet_ids"]["tfp_history"])
+                    's': make_url(st.secrets["sheet_ids"]["ntuc_sales"]),
+                    'db': make_url(st.secrets["sheet_ids"]["ntuc_db"]),
+                    'd': make_url(st.secrets["sheet_ids"]["ntuc_dist"]),
+                    'w': make_url(st.secrets["sheet_ids"]["ntuc_waste"]),
+                    'h': make_url(st.secrets["sheet_ids"]["ntuc_history"])
                 }
                 st.rerun()
         with b4:
@@ -768,6 +788,8 @@ def main_app_interface(authenticator, name, permissions):
                 r_loc = load_google_sheet(urls['db'], "Location DB")
             elif rpt in ["SS"]:
                 r_loc = load_google_sheet(urls['db'], "DB LOCATION")
+            elif rpt in ["NTUC"]:
+                r_loc = load_google_sheet(urls['db'], "Location DB")
             else:
                 r_loc = None
                 
@@ -862,8 +884,8 @@ def main_app_interface(authenticator, name, permissions):
                     df.loc[mask_unknown, 'Item_Name'] = "Item " + df.loc[mask_unknown, 'NAV'].astype(str)
                     if rpt == 'AEON' or rpt == 'TFP':
                         df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG '))]
-                    elif rpt == 'CS':
-                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY '))]
+                    elif rpt == 'CS' or rpt =='SS' or rpt == 'NTUC':
+                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER '))]
                     elif rpt == 'AEON DF' or rpt == 'TFP DF':
                         mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ', 'SNBG '))
                         mask_not_egg = ~df['Item_Name'].astype(str).str.upper().str.contains('SELENIUM EGG MYS PAPER TRAY', na=False)
