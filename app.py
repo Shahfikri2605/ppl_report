@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit_authenticator as stauth
-from dashboard import main_app_interface, get_gspread_client, make_url
+from ppl_dashboard_SG import main_app_interface, get_gspread_client, make_url
 
 st.set_page_config(page_title="PPL Report System", layout="wide", page_icon="📊")
 
