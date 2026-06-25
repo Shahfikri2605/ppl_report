@@ -885,7 +885,7 @@ def main_app_interface(authenticator, name, permissions):
                     if rpt == 'AEON' or rpt == 'TFP':
                         df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG '))]
                     elif rpt == 'CS' or rpt =='SS' or rpt == 'NTUC':
-                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER '))]
+                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML"))]
                     elif rpt == 'AEON DF' or rpt == 'TFP DF':
                         mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ', 'SNBG '))
                         mask_not_egg = ~df['Item_Name'].astype(str).str.upper().str.contains('SELENIUM EGG MYS PAPER TRAY', na=False)
