@@ -78,16 +78,33 @@ def get_rank_table(df, group_col, sort_by='Profit', top=True, n=10):
         aggfunc='sum'
     ).fillna(0)
     
-    # 5. NEW: Add the TOTAL columns for every metric so we can sort by them
+    # 5. Add the TOTAL columns for every metric so we can sort by them
     metrics = pivot_df.columns.get_level_values(0).unique()
     for m in metrics:
         pivot_df[(m, 'TOTAL')] = pivot_df[m].sum(axis=1)
     
-    # 6. Sort columns order
+    # 6. FIXED: Use a 3-element tuple layout to prevent int vs str crashes
     metric_order = {'Dist_Val': 0, 'Sales_Val': 1, 'Waste_Val': 2, 'Profit': 3}
-    pivot_df = pivot_df.sort_index(axis=1, key=lambda x: [metric_order.get(m, 99) for m in x.get_level_values(0)])
+    month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     
-    # 7. Sort the rows by Profit Total (Now this will work because the column exists)
+    def rank_table_sort_key(col_tuple):
+        m, t = col_tuple
+        m_idx = metric_order.get(m, 99)
+        
+        if t == 'TOTAL':
+            # The middle flag '1' pushes TOTAL columns to the very end of their metric block safely
+            return (m_idx, 1, 0 if group_col == "Month" else '')
+        else:
+            # The middle flag '0' handles regular layout metrics first
+            if group_col == "Month" and t in month_order:
+                return (m_idx, 0, month_order.index(t))
+            else:
+                return (m_idx, 0, t)
+    
+    sorted_cols = sorted(pivot_df.columns, key=rank_table_sort_key)
+    pivot_df = pivot_df.reindex(columns=sorted_cols)
+    
+    # 7. Sort the rows by Profit Total
     pivot_df = pivot_df.sort_values(by=('Profit', 'TOTAL'), ascending=not top)
     
     return pivot_df
@@ -626,7 +643,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_waste['NAV'] = df_waste['NAV'].apply(clean_id)
 
         # APPLY STORE MAPPINGS
-        if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","SS","NTUC"]:
+        if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","SS","NTUC"]:
             def map_waste(x):
                 # 1. Split by '-' to get all parts
                 parts = str(x).split('-')
@@ -644,6 +661,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
                 return loc_map_nav.get(val, f"UNMAPPED - {val}")
                 
             df_waste['Store'] = df_waste['Store'].apply(map_waste)
+        
         df_waste['Date'] = pd.to_datetime(df_waste['Date'], dayfirst=True, errors='coerce')
         df_waste['Year'] = df_waste['Date'].dt.year.astype(str).replace(r'\.0$', '', regex=True)
         df_waste['Month'] = df_waste['Date'].dt.month_name().str[:3]
@@ -1048,7 +1066,7 @@ def main_app_interface(authenticator, name, permissions):
                                     item_view = item_view.sort_values((sort_col, 'TOTAL'), ascending=False)
                                 st.markdown(f"#### 📍 Stores selling {selected_item}")
                                 f_det = {c: "{:,.0f}" if 'STR%' in str(c) else fmt for c in item_view.columns}
-                                st.dataframe(item_view.sort_index(axis=1).style.format(f_det), width='stretch')
+                                st.dataframe(item_view.style.format(f_det), width='stretch')
 
                     display_item_drilldown(t3, qty_display_list, 'Sales_Qty', "{:,.2f}",group_col)
                     display_item_drilldown(t4, val_display_list, 'Sales_Val', "{:,.2f}",group_col)
@@ -1082,6 +1100,7 @@ def main_app_interface(authenticator, name, permissions):
                     has_sales_data = (df['Sales_Qty'] > 0) | (df['Sales_Val'] > 0)
                     has_distribution_data = (df['Dist_Qty'] > 0) | (df['Dist_Val'] > 0)
                     no_distribution_data = (df['Dist_Qty'] == 0) & (df['Dist_Val'] == 0)
+                    has_wastage_data = (df['Waste_Qty']>0) | (df['Waste_Val'] >0)
                     
                     # 3. CLEAN REPORT RULE: 
                     # Exclude an unmapped row ONLY IF it has no distribution data.
@@ -1090,7 +1109,7 @@ def main_app_interface(authenticator, name, permissions):
                     
                     # 4. UNMAPPED REPORT LOG RULE:
                     # Only catch rows that are unmapped, have sales impact, but are completely missing from distribution sheets
-                    df_unmapped_raw = df[(is_unmapped_store | is_unmapped_item) & has_sales_data & no_distribution_data]
+                    df_unmapped_raw = df[(is_unmapped_store | is_unmapped_item ) & has_sales_data & no_distribution_data]
 
                     # Regenerate summaries exclusively for the Clean Excel Report
                     def create_hierarchical_qty(df_source, primary_col, secondary_col, time_col):
