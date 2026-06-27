@@ -653,25 +653,32 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_waste['NAV'] = df_waste['NAV'].apply(clean_id)
 
         # APPLY STORE MAPPINGS
-        if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","SS","NTUC"]:
-            def map_waste(x):
-                # 1. Split by '-' to get all parts
-                parts = str(x).split('-')
+        # if report_type in ["AEON", "AEON DF", "TFP","CS", "TFP DF","SS","NTUC"]:
+        #     def map_waste(x):
+        #         # 1. Split by '-' to get all parts
+        #         parts = str(x).split('-')
                 
-                # 2. Find the part that is numeric and exactly 4 digits long
-                # This ignores 'HC001500' (too long) and '3' (too short)
-                val = next((p for p in parts if p.isdigit() and len(p) == 4), None)
+        #         # 2. Find the part that is numeric and exactly 4 digits long
+        #         # This ignores 'HC001500' (too long) and '3' (too short)
+        #         val = next((p for p in parts if p.isdigit() and len(p) == 4), None)
                 
-                # 3. Fallback: If no 4-digit code found, use the original string
-                if not val:
-                    val = str(x).strip()
+        #         # 3. Fallback: If no 4-digit code found, use the original string
+        #         if not val:
+        #             val = str(x).strip()
                 
-                if val == "" or val == "0": return "UNKNOWN"
-                if val in loc_map_nav.values(): return val 
+        #         if val == "" or val == "0": return "UNKNOWN"
+        #         if val in loc_map_nav.values(): return val 
+        #         return loc_map_nav.get(val, f"UNMAPPED - {val}")
+                
+            # df_waste['Store'] = df_waste['Store'].apply(map_waste)
+        if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","CS DF","NTUC","SS","NTUC DF"]:
+            def map_nav(x):
+                val = str(x).replace('.0', '').strip()
+                if val == "" or val == "0" or val.upper() == "TRANSFER": return "UNKNOWN"
+                if val in loc_map_nav.values(): return val # Preserves names from Dist2
                 return loc_map_nav.get(val, f"UNMAPPED - {val}")
-                
-            df_waste['Store'] = df_waste['Store'].apply(map_waste)
-        
+            df_waste['Store'] = df_waste['Store'].apply(map_nav)
+            
         df_waste['Date'] = pd.to_datetime(df_waste['Date'], dayfirst=True, errors='coerce')
         df_waste['Year'] = df_waste['Date'].dt.year.astype(str).replace(r'\.0$', '', regex=True)
         df_waste['Month'] = df_waste['Date'].dt.month_name().str[:3]
