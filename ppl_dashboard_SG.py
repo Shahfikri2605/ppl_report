@@ -108,6 +108,54 @@ def get_rank_table(df, group_col, sort_by='Profit', top=True, n=10):
     pivot_df = pivot_df.sort_values(by=('Profit', 'TOTAL'), ascending=not top)
     
     return pivot_df
+
+def get_store_rank_table(df, group_col, sort_by='Profit', top=True, n=10):
+    # 1. Calculate totals per store for the target metric to find top/bottom performers
+    totals = df.groupby('Store')[sort_by].sum()
+    
+    # 2. Extract the target stores
+    if top:
+        ranked_stores = totals.nlargest(n).index
+    else:
+        ranked_stores = totals.nsmallest(n).index
+        
+    # 3. Filter data for just those stores
+    subset = df[df['Store'].isin(ranked_stores)]
+    
+    # 4. Generate the structured Pivot Table broken down by month/week
+    pivot_df = subset.pivot_table(
+        index='Store', 
+        columns=group_col, 
+        values=['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit'], 
+        aggfunc='sum'
+    ).fillna(0)
+    
+    # 5. Inject a grand total baseline calculation column per row
+    metrics = pivot_df.columns.get_level_values(0).unique()
+    for m in metrics:
+        pivot_df[(m, 'TOTAL')] = pivot_df[m].sum(axis=1)
+        
+    # 6. Apply sequence mapping weights to align blocks chronologically
+    metric_order = {'Dist_Val': 0, 'Sales_Val': 1, 'Waste_Val': 2, 'Profit': 3}
+    month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    
+    def store_table_sort_key(col_tuple):
+        m, t = col_tuple
+        m_idx = metric_order.get(m, 99)
+        if t == 'TOTAL':
+            return (m_idx, 1, 0 if group_col == "Month" else '')
+        else:
+            if group_col == "Month" and t in month_order:
+                return (m_idx, 0, month_order.index(t))
+            else:
+                return (m_idx, 0, t)
+                
+    sorted_cols = sorted(pivot_df.columns, key=store_table_sort_key)
+    pivot_df = pivot_df.reindex(columns=sorted_cols)
+    
+    # 7. Order rows based on overall consolidated profit performance
+    pivot_df = pivot_df.sort_values(by=('Profit', 'TOTAL'), ascending=not top)
+    return pivot_df
 # --- 2. DATA PROCESSING HELPERS ---
 def normalize_store_name(name, report_type='AEON', loc_map=None):
     if pd.isna(name) or str(name).strip() == "": return "UNKNOWN"
@@ -306,7 +354,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     loc_map_nt_sales={}
     loc_map_nav = {}
 
-    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","CS DF","SS","NTUC","NTUC DF"] and df_loc_raw is not None:
+    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","CS DF","SS","SS DF","NTUC","NTUC DF"] and df_loc_raw is not None:
         if "AEON" in report_type:
             loc_sheet_cols = {'AeonCode': ['AEON CODE'], 'NavCode': ['NAV LOC CODE'], 'NavLoc': ['NAV LOC NAME']}
             sheet_title = "Loc"
@@ -366,7 +414,33 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             df_uom = strict_rename(df_uom, uom_sheet_cols)
             df_uom = df_uom.dropna(subset=['Desc', 'RSP'])
             rsp_mapping = df_uom.set_index('Desc')['RSP'].apply(clean_currency).to_dict()
-
+    elif (report_type == "CS" or report_type == "CS DF" ) and df_uom_raw is not None:
+        # FIX: Build CS price map indexing directly by NAV code ('M Code') to 'RSP CS'
+        cs_sheet_cols = {'NAV': ['M Code'], 'RSP': ['RSP CS']}
+        df_cs_rsp = find_correct_header_row(df_uom_raw, cs_sheet_cols, "RSP CS")
+        if df_cs_rsp is not None:
+            df_cs_rsp = strict_rename(df_cs_rsp, cs_sheet_cols)
+            df_cs_rsp['NAV'] = df_cs_rsp['NAV'].apply(clean_id)
+            df_cs_rsp = df_cs_rsp.dropna(subset=['NAV', 'RSP'])
+            rsp_mapping = df_cs_rsp.set_index('NAV')['RSP'].apply(clean_currency).to_dict()
+    elif (report_type == "NTUC" or report_type == "NTUC DF" ) and df_uom_raw is not None:
+        # FIX: Build CS price map indexing directly by NAV code ('M Code') to 'RSP CS'
+        ntuc_sheet_cols = {'NAV': ['M Code'], 'RSP': ['RSP NTUC']}
+        df_ntuc_rsp = find_correct_header_row(df_uom_raw, ntuc_sheet_cols, "RSP NTUC")
+        if df_ntuc_rsp is not None:
+            df_ntuc_rsp = strict_rename(df_ntuc_rsp, ntuc_sheet_cols)
+            df_ntuc_rsp['NAV'] = df_ntuc_rsp['NAV'].apply(clean_id)
+            df_ntuc_rsp = df_ntuc_rsp.dropna(subset=['NAV', 'RSP'])
+            rsp_mapping = df_ntuc_rsp.set_index('NAV')['RSP'].apply(clean_currency).to_dict()
+    elif (report_type == "SS" or report_type == "SS DF" ) and df_uom_raw is not None:
+        # FIX: Build CS price map indexing directly by NAV code ('M Code') to 'RSP CS'
+        ss_sheet_cols = {'NAV': ['M Code'], 'RSP': ['RSP SS']}
+        df_ss_rsp = find_correct_header_row(df_uom_raw, ss_sheet_cols, "RSP SS")
+        if df_ss_rsp is not None:
+            df_ss_rsp = strict_rename(df_ss_rsp, ss_sheet_cols)
+            df_ss_rsp['NAV'] = df_ss_rsp['NAV'].apply(clean_id)
+            df_ss_rsp = df_ss_rsp.dropna(subset=['NAV', 'RSP'])
+            rsp_mapping = df_ss_rsp.set_index('NAV')['RSP'].apply(clean_currency).to_dict()
     
     if  report_type == "NTUC_DRY":
         id_vars = ['Store', 'Raw_Item']
@@ -490,18 +564,29 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     else:
         df_sales['Val'] = df_sales['Val'].apply(clean_currency)
     
-    if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','CS DF','SS','NTUC','NTUC DF']:
+    if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF', 'CS', 'CS DF','NTUC','NTUC DF','SS','SS DF']:
         df_sales['UOM_Str'] = df_sales['NAV'].map(uom_mapping).fillna('KG')
-        df_sales['DB_Item_Name'] = df_sales['NAV'].map(df_db.set_index('NAV')['Final_Name'].to_dict())
-        df_sales['RSP_Val'] = df_sales['DB_Item_Name'].map(rsp_mapping).fillna(0.0)
-        def calc_aeon_qty(row):
-            if row['UOM_Str'] == 'KG' and row['RSP_Val'] > 0:
+        
+        # FIX: Pull price matching rules dynamically (CS checks by direct NAV code, AEON checks by item name description)
+        if report_type in ['CS', 'CS DF','NTUC','NTUC DF','SS','SS DF']:
+            df_sales['RSP_Val'] = df_sales['NAV'].map(rsp_mapping).fillna(0.0)
+        else:
+            df_sales['DB_Item_Name'] = df_sales['NAV'].map(df_db.set_index('NAV')['Final_Name'].to_dict())
+            df_sales['RSP_Val'] = df_sales['DB_Item_Name'].map(rsp_mapping).fillna(0.0)
+            
+        def calc_calculated_qty(row):
+            # If the item metric is marked as a KG Weighted produce element and has valid price data
+            if str(row['UOM_Str']).upper().strip() == 'KG' and row['RSP_Val'] > 0:
                 return row['Val'] / row['RSP_Val']
             else:
+                # If it's a piece/packet element (e.g. 150GEA), multiply by its parsed factor decimal ratio
                 factor = parse_uom_factor(row['UOM_Str'])
                 return row['Qty'] * factor
-        df_sales['Qty'] = df_sales.apply(calc_aeon_qty, axis=1)
+                
+        df_sales['Qty'] = df_sales.apply(calc_calculated_qty, axis=1)
         df_sales = df_sales.drop(columns=['UOM_Str', 'RSP_Val', 'DB_Item_Name'], errors='ignore')
+    
+        
 
     if 'Date' in df_sales.columns:
         if report_type == 'SS_DRY':
@@ -819,7 +904,16 @@ def main_app_interface(authenticator, name, permissions):
             r_db = load_google_sheet(urls['db'])
             r_d = load_google_sheet(urls['d'])
             r_d2 = load_google_sheet(urls['d2']) if 'd2' in urls and urls['d2'] else None
-            r_uom = load_google_sheet(urls['db'], "UOM") if rpt in ["AEON", "AEON DF"] else None
+            if rpt in ["AEON", "AEON DF"]:
+                r_uom = load_google_sheet(urls['db'], "UOM")
+            elif rpt in ["CS", "CS DF"]:
+                r_uom = load_google_sheet(urls['db'], "RSP CS")
+            elif rpt in ["NTUC","NTUC DF"]:
+                r_uom = load_google_sheet(urls['db'], "RSP NTUC")
+            elif rpt in ["SS","SS DF"]:
+                r_uom =load_google_sheet(urls['db'], "RSP SS")
+            else:
+                r_uom = None
             
             if rpt in ["AEON", "AEON DF"]:
                 r_loc = load_google_sheet(urls['db'], "Loc")
@@ -961,7 +1055,7 @@ def main_app_interface(authenticator, name, permissions):
                     v_top10_all = df.groupby('Item_Name')[['Dist_Val', 'Sales_Val', 'Waste_Val', 'Profit']].sum().reset_index()
 
                     st.subheader(f"📊 {rpt} Live Report ({sel_year}-{ft})")
-                    t1, t2, t3, t4, t5, t6 = st.tabs(["📦 QTY (Store)", "💰 $ (Store)", "📦 QTY (Item)", "💰 $ (Item)", "🏆 Top 10", "📉 Bottom 10"])
+                    t1, t2, t3, t4, t5, t6,t7,t8 = st.tabs(["📦 QTY (Store)", "💰 $ (Store)", "📦 QTY (Item)", "💰 $ (Item)", "🏆 Top 10", "📉 Bottom 10","🏪 Top 10 Stores", "🏪 Bottom 10 Stores"])
 
                     def display_drilldown(tab, main_df, detail_cols, sort_col, fmt, time_col):
                         with tab:
@@ -1103,6 +1197,21 @@ def main_app_interface(authenticator, name, permissions):
                             # Sorts by Profit, Bottom 10 (Lowest to Highest)
                             bot10_table = get_rank_table(df, group_col, sort_by='Profit', top=False, n=10)
                             st.dataframe(bot10_table.style.format("{:,.2f}"), use_container_width=True)
+                        else:
+                            st.info("No data available.")
+                    with t7:
+                        st.subheader("🏆 TOP 10 Stores by Profit")
+                        if not df.empty:
+                            top10_stores = get_store_rank_table(df, group_col, sort_by='Profit', top=True, n=10)
+                            st.dataframe(top10_stores.style.format("{:,.2f}"), use_container_width=True)
+                        else:
+                            st.info("No data available.")
+
+                    with t8:
+                        st.subheader("📉 BOTTOM 10 Stores by Profit")
+                        if not df.empty:
+                            bot10_stores = get_store_rank_table(df, group_col, sort_by='Profit', top=False, n=10)
+                            st.dataframe(bot10_stores.style.format("{:,.2f}"), use_container_width=True)
                         else:
                             st.info("No data available.")
                     
