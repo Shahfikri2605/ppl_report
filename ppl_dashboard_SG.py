@@ -939,6 +939,17 @@ def main_app_interface(authenticator, name, permissions):
                     if not df_d.empty: df_d = df_d[df_d['Store'] != "UNKNOWN"]
                     if not df_w.empty: df_w = df_w[df_w['Store'] != "UNKNOWN"]
 
+                    if "NTUC" in rpt:
+                        # 1. Type the exact mapped names of the stores you want to block here:
+                        unwanted_ntuc_stores = [
+                            "FPX-30 GREENWOOD AVENUE", 
+                            "FPX NUS KENT VALE"
+                        ]
+                        # 2. Drop them completely across Sales, Distribution, and Wastage metrics
+                        if not df_s.empty: df_s = df_s[~df_s['Store'].isin(unwanted_ntuc_stores)]
+                        if not df_d.empty: df_d = df_d[~df_d['Store'].isin(unwanted_ntuc_stores)]
+                        if not df_w.empty: df_w = df_w[~df_w['Store'].isin(unwanted_ntuc_stores)]
+
                     my_stores = permissions.get("stores", [])
                     if "ALL" not in my_stores:
                         if not df_s.empty: df_s = df_s[df_s['Store'].isin(my_stores)]
