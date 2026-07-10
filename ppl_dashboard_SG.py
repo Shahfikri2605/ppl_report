@@ -940,7 +940,6 @@ def main_app_interface(authenticator, name, permissions):
                     if not df_w.empty: df_w = df_w[df_w['Store'] != "UNKNOWN"]
 
                     if "NTUC" in rpt:
-                        # 1. Type the exact mapped names of the stores you want to block here:
                         unwanted_ntuc_stores = [
                             "FPX-30 GREENWOOD AVENUE", 
                             "FPX NUS KENT VALE"
@@ -1254,27 +1253,78 @@ def main_app_interface(authenticator, name, permissions):
                         p = df_source.groupby([primary_col, time_col])[qty_display_list].sum()
                         p['STR%'] = (p['Sales_Qty'] / p['Dist_Qty'].replace(0, 1) * 100).replace([np.inf, -np.inf], 0).fillna(0).round(0)
                         p = p.reset_index()
-                        p['Detail'] = " SUMMARY" # Space forces it to sort to the top
+                        p['Detail'] = " SUMMARY"
                         
                         # 2. Detail Rows (Items inside Store)
                         c = df_source.groupby([primary_col, secondary_col, time_col])[qty_display_list].sum()
                         c['STR%'] = (c['Sales_Qty'] / c['Dist_Qty'].replace(0, 1) * 100).replace([np.inf, -np.inf], 0).fillna(0).round(0)
                         c = c.reset_index().rename(columns={secondary_col: 'Detail'})
                         
-                        # 3. Combine and Pivot (Keep as MultiIndex for precise grouping later)
+                        # 3. Combine and Unstack
                         combined = pd.concat([p, c]).set_index([primary_col, 'Detail', time_col])
-                        unstacked = combined.unstack(level=2).fillna(0).sort_index(level=[0, 1])
-                        return unstacked
+                        unstacked = combined.unstack(level=2).fillna(0)
+
+                        # 4. DYNAMIC TWO-TIER SORTING ENGINE (Sales Qty Descending)
+                        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                        if time_col == "Month":
+                            available_periods = [m for m in month_order if m in df_source[time_col].unique()]
+                            last_period = available_periods[-1] if available_periods else df_source[time_col].max()
+                        else:
+                            last_period = sorted(df_source[time_col].astype(str).unique())[-1] if df_source[time_col].nunique() > 0 else df_source[time_col].max()
+                            
+                        df_last = df_source[df_source[time_col] == last_period]
+                        if df_last.empty: df_last = df_source
+                        
+                        p_totals = df_last.groupby(primary_col)['Sales_Qty'].sum().to_dict()
+                        c_totals = df_last.groupby([primary_col, secondary_col])['Sales_Qty'].sum().to_dict()
+                        
+                        sort_df = pd.DataFrame(index=unstacked.index).reset_index()
+                        sort_df['p_rank'] = sort_df[primary_col].map(p_totals).fillna(-999999)
+                        sort_df['is_summary'] = np.where(sort_df['Detail'] == " SUMMARY", 1, 0)
+                        sort_df['c_rank'] = sort_df.apply(lambda r: c_totals.get((r[primary_col], r['Detail']), -999999) if r['Detail'] != " SUMMARY" else float('inf'), axis=1)
+                        
+                        # Sort by Parent Rank, keep Summary on top, then sort Child Details Rank
+                        sort_df = sort_df.sort_values(by=['p_rank', 'is_summary', 'c_rank'], ascending=[False, False, False])
+                        new_index = pd.MultiIndex.from_frame(sort_df[[primary_col, 'Detail']])
+                        
+                        return unstacked.reindex(new_index)
 
                     def create_hierarchical_val(df_source, primary_col, secondary_col, time_col):
+                        # 1. Master Rows (Store Totals)
                         p = df_source.groupby([primary_col, time_col])[val_display_list].sum().reset_index()
                         p['Detail'] = " SUMMARY"
                         
+                        # 2. Detail Rows (Items inside Store)
                         c = df_source.groupby([primary_col, secondary_col, time_col])[val_display_list].sum().reset_index().rename(columns={secondary_col: 'Detail'})
                         
+                        # 3. Combine and Unstack
                         combined = pd.concat([p, c]).set_index([primary_col, 'Detail', time_col])
-                        unstacked = combined.unstack(level=2).fillna(0).sort_index(level=[0, 1])
-                        return unstacked
+                        unstacked = combined.unstack(level=2).fillna(0)
+
+                        # 4. DYNAMIC TWO-TIER SORTING ENGINE (Profit Descending)
+                        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                        if time_col == "Month":
+                            available_periods = [m for m in month_order if m in df_source[time_col].unique()]
+                            last_period = available_periods[-1] if available_periods else df_source[time_col].max()
+                        else:
+                            last_period = sorted(df_source[time_col].astype(str).unique())[-1] if df_source[time_col].nunique() > 0 else df_source[time_col].max()
+                            
+                        df_last = df_source[df_source[time_col] == last_period]
+                        if df_last.empty: df_last = df_source
+                        
+                        p_totals = df_last.groupby(primary_col)['Profit'].sum().to_dict()
+                        c_totals = df_last.groupby([primary_col, secondary_col])['Profit'].sum().to_dict()
+                        
+                        sort_df = pd.DataFrame(index=unstacked.index).reset_index()
+                        sort_df['p_rank'] = sort_df[primary_col].map(p_totals).fillna(-999999)
+                        sort_df['is_summary'] = np.where(sort_df['Detail'] == " SUMMARY", 1, 0)
+                        sort_df['c_rank'] = sort_df.apply(lambda r: c_totals.get((r[primary_col], r['Detail']), -999999) if r['Detail'] != " SUMMARY" else float('inf'), axis=1)
+                        
+                        # Sort by Parent Rank, keep Summary on top, then sort Child Details Rank
+                        sort_df = sort_df.sort_values(by=['p_rank', 'is_summary', 'c_rank'], ascending=[False, False, False])
+                        new_index = pd.MultiIndex.from_frame(sort_df[[primary_col, 'Detail']])
+                        
+                        return unstacked.reindex(new_index)
 
                     qty_pivot = create_hierarchical_qty(df_clean, 'Store', 'Item_Name', group_col)
                     val_pivot = create_hierarchical_val(df_clean, 'Store', 'Item_Name', group_col)
@@ -1429,6 +1479,21 @@ def main_app_interface(authenticator, name, permissions):
                                     val = totals.iloc[col - idx_cols]
                                     t_fmt = total_num_fmt
                                 ws.write_number(total_row, col, val, t_fmt)
+                            
+                            neg_profit_fmt = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006', 'bold': True, 'border': 1})
+                            for c_idx, col_tuple in enumerate(df_to_write.columns):
+                                excel_c = idx_cols + c_idx
+                                metric = col_tuple[0] if isinstance(col_tuple, tuple) else col_tuple
+                                if 'PROFIT' in str(metric).upper():
+                                    ws.conditional_format(
+                                        data_start_row, excel_c, total_row, excel_c,
+                                        {
+                                            'type': 'cell',
+                                            'criteria': '<',
+                                            'value': 0,
+                                            'format': neg_profit_fmt
+                                        }
+                                    )
 
                         # Create the 4 clean sheets
                         format_pivot(qty_pivot, 'Store Qty', "📊 STORE QUANTITY ANALYSIS (CLEAN)", col_w=35)
@@ -1438,19 +1503,18 @@ def main_app_interface(authenticator, name, permissions):
 
                         if not df_clean.empty:
                             ws5 = workbook.add_worksheet('TOP&BTM 10')
-                            
-                            # Filter out unassigned item strings from raw clean records first
                             valid_items_df = df_clean[(~df_clean['Item_Name'].str.startswith('Item ', na=False)) & (df_clean['Item_Name'] != 'Unknown Item')]
                             
-                            # Generate dynamic 2D multi-index timeline rank tables matching active group_col tokens
                             top10_df = get_rank_table(valid_items_df, group_col, sort_by='Profit', top=True, n=10)
-                            bottom10_df = get_rank_table(valid_items_df, group_col, sort_by='Profit', top=False, n=10)
                             
-                            # --- 1. RENDER TOP 10 CHRONOLOGICAL TIMELINE ---
+                            # FIX: Enforce descending sort for the Bottom 10 items pivot table
+                            bottom10_df = get_rank_table(valid_items_df, group_col, sort_by='Profit', top=False, n=10)
+                            bottom10_df = bottom10_df.sort_values(by=('Profit', 'TOTAL'), ascending=False)
+                            
+                            # --- 1. RENDER TOP 10 ---
                             ws5.write(0, 0, "🏆 TOP 10 ITEMS BY PROFIT", title_fmt)
                             top10_df.to_excel(writer, sheet_name='TOP&BTM 10', startrow=2, index=True)
                             
-                            # Color headers to match standard layout sheets
                             ws5.write(2, 0, "Item Name", header_base)
                             ws5.write(3, 0, "", header_base)
                             for c_idx, col_tuple in enumerate(top10_df.columns):
@@ -1458,14 +1522,13 @@ def main_app_interface(authenticator, name, permissions):
                                 ws5.write(2, excel_c, str(col_tuple[0]), get_fmt(col_tuple[0]))
                                 ws5.write(3, excel_c, str(col_tuple[1]), get_fmt(col_tuple[0]))
                                 
-                            # Write grand summary bottom row
                             total_row_top = 4 + len(top10_df)
                             ws5.write(total_row_top, 0, "GRAND TOTAL", total_fmt)
                             for c_idx, col_tuple in enumerate(top10_df.columns):
                                 val = top10_df[col_tuple].sum()
                                 ws5.write_number(total_row_top, 1 + c_idx, val, total_num_fmt)
                                 
-                            # --- 2. RENDER BOTTOM 10 CHRONOLOGICAL TIMELINE ---
+                            # --- 2. RENDER BOTTOM 10 (NOW SORTED DESCENDING) ---
                             start_btm_row = total_row_top + 3
                             ws5.write(start_btm_row, 0, "📉 BOTTOM 10 ITEMS BY PROFIT", title_fmt)
                             bottom10_df.to_excel(writer, sheet_name='TOP&BTM 10', startrow=start_btm_row + 2, index=True)
@@ -1483,10 +1546,50 @@ def main_app_interface(authenticator, name, permissions):
                                 val = bottom10_df[col_tuple].sum()
                                 ws5.write_number(total_row_btm, 1 + c_idx, val, total_num_fmt)
                                 
-                            # Global formatting widths for sheet columns
                             ws5.set_column(0, 0, 40, cell_fmt)
                             ws5.set_column(1, len(top10_df.columns) + 1, 14, num_fmt)
                             
+                            ws6 = workbook.add_worksheet('STORE RANKS')
+                            ws6.write(0, 0, "🏆 TOP 10 STORES BY PROFIT", title_fmt)
+                            
+                            top10_stores_ex = get_store_rank_table(df_clean, group_col, sort_by='Profit', top=True, n=10)
+                            top10_stores_ex.to_excel(writer, sheet_name='STORE RANKS', startrow=2, index=True)
+                            
+                            ws6.write(2, 0, "Store Name", header_base)
+                            ws6.write(3, 0, "", header_base)
+                            for c_idx, col_tuple in enumerate(top10_stores_ex.columns):
+                                excel_c = 1 + c_idx
+                                ws6.write(2, excel_c, str(col_tuple[0]), get_fmt(col_tuple[0]))
+                                ws6.write(3, excel_c, str(col_tuple[1]), get_fmt(col_tuple[0]))
+                                
+                            total_store_row_top = 4 + len(top10_stores_ex)
+                            ws6.write(total_store_row_top, 0, "GRAND TOTAL", total_fmt)
+                            for c_idx, col_tuple in enumerate(top10_stores_ex.columns):
+                                val = top10_stores_ex[col_tuple].sum()
+                                ws6.write_number(total_store_row_top, 1 + c_idx, val, total_num_fmt)
+                                
+                            # FIX: Enforce descending sort for the Bottom 10 stores pivot table
+                            start_btm_store_row = total_store_row_top + 3
+                            ws6.write(start_btm_store_row, 0, "📉 BOTTOM 10 STORES BY PROFIT", title_fmt)
+                            bot10_stores_ex = get_store_rank_table(df_clean, group_col, sort_by='Profit', top=False, n=10)
+                            bot10_stores_ex = bot10_stores_ex.sort_values(by=('Profit', 'TOTAL'), ascending=False)
+                            bot10_stores_ex.to_excel(writer, sheet_name='STORE RANKS', startrow=start_btm_store_row + 2, index=True)
+                            
+                            ws6.write(start_btm_store_row + 2, 0, "Store Name", header_base)
+                            ws6.write(start_btm_store_row + 3, 0, "", header_base)
+                            for c_idx, col_tuple in enumerate(bot10_stores_ex.columns):
+                                excel_c = 1 + c_idx
+                                ws6.write(start_btm_store_row + 2, excel_c, str(col_tuple[0]), get_fmt(col_tuple[0]))
+                                ws6.write(start_btm_store_row + 3, excel_c, str(col_tuple[1]), get_fmt(col_tuple[0]))
+                                
+                            total_store_row_btm = start_btm_store_row + 4 + len(bot10_stores_ex)
+                            ws6.write(total_store_row_btm, 0, "GRAND TOTAL", total_fmt)
+                            for c_idx, col_tuple in enumerate(bot10_stores_ex.columns):
+                                val = bot10_stores_ex[col_tuple].sum()
+                                ws6.write_number(total_store_row_btm, 1 + c_idx, val, total_num_fmt)
+                                
+                            ws6.set_column(0, 0, 35, cell_fmt)
+                            ws6.set_column(1, len(top10_stores_ex.columns) + 1, 14, num_fmt)
                             df.to_excel(writer, sheet_name='Master Data Raw', index=False)
 
                     # ----------------------------------------------------
