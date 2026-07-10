@@ -1249,79 +1249,80 @@ def main_app_interface(authenticator, name, permissions):
 
                     # Regenerate summaries exclusively for the Clean Excel Report
                     def create_hierarchical_qty(df_source, primary_col, secondary_col, time_col):
-                        # 1. Master Rows (Store Totals)
-                        p = df_source.groupby([primary_col, time_col])[qty_display_list].sum()
-                        p['STR%'] = (p['Sales_Qty'] / p['Dist_Qty'].replace(0, 1) * 100).replace([np.inf, -np.inf], 0).fillna(0).round(0)
-                        p = p.reset_index()
-                        p['Detail'] = " SUMMARY"
-                        
-                        # 2. Detail Rows (Items inside Store)
-                        c = df_source.groupby([primary_col, secondary_col, time_col])[qty_display_list].sum()
-                        c['STR%'] = (c['Sales_Qty'] / c['Dist_Qty'].replace(0, 1) * 100).replace([np.inf, -np.inf], 0).fillna(0).round(0)
-                        c = c.reset_index().rename(columns={secondary_col: 'Detail'})
-                        
-                        # 3. Combine and Unstack
-                        combined = pd.concat([p, c]).set_index([primary_col, 'Detail', time_col])
-                        unstacked = combined.unstack(level=2).fillna(0)
-
-                        # 4. DYNAMIC TWO-TIER SORTING ENGINE (Sales Qty Descending)
+                        # 1. Dynamically find the last month or week available in the data
                         month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
                         if time_col == "Month":
                             available_periods = [m for m in month_order if m in df_source[time_col].unique()]
                             last_period = available_periods[-1] if available_periods else df_source[time_col].max()
                         else:
                             last_period = sorted(df_source[time_col].astype(str).unique())[-1] if df_source[time_col].nunique() > 0 else df_source[time_col].max()
-                            
+
+                        # 2. Extract sorting order based on last period's Sales Volume
                         df_last = df_source[df_source[time_col] == last_period]
                         if df_last.empty: df_last = df_source
                         
                         p_totals = df_last.groupby(primary_col)['Sales_Qty'].sum().to_dict()
                         c_totals = df_last.groupby([primary_col, secondary_col])['Sales_Qty'].sum().to_dict()
+
+                        # 3. Build total lines
+                        p = df_source.groupby([primary_col, time_col])[qty_display_list].sum()
+                        p['STR%'] = (p['Sales_Qty'] / p['Dist_Qty'].replace(0, 1) * 100).replace([np.inf, -np.inf], 0).fillna(0).round(0)
+                        p = p.reset_index()
+                        p['Detail'] = " SUMMARY" 
                         
+                        # 4. Build sub-item line items
+                        c = df_source.groupby([primary_col, secondary_col, time_col])[qty_display_list].sum()
+                        c['STR%'] = (c['Sales_Qty'] / c['Dist_Qty'].replace(0, 1) * 100).replace([np.inf, -np.inf], 0).fillna(0).round(0)
+                        c = c.reset_index().rename(columns={secondary_col: 'Detail'})
+                        
+                        # 5. Merge and Unstack
+                        combined = pd.concat([p, c]).set_index([primary_col, 'Detail', time_col])
+                        unstacked = combined.unstack(level=2).fillna(0)
+
+                        # 6. Rebuild sorting structure
                         sort_df = pd.DataFrame(index=unstacked.index).reset_index()
                         sort_df['p_rank'] = sort_df[primary_col].map(p_totals).fillna(-999999)
                         sort_df['is_summary'] = np.where(sort_df['Detail'] == " SUMMARY", 1, 0)
                         sort_df['c_rank'] = sort_df.apply(lambda r: c_totals.get((r[primary_col], r['Detail']), -999999) if r['Detail'] != " SUMMARY" else float('inf'), axis=1)
                         
-                        # Sort by Parent Rank, keep Summary on top, then sort Child Details Rank
-                        sort_df = sort_df.sort_values(by=['p_rank', 'is_summary', 'c_rank'], ascending=[False, False, False])
+                        # CRITICAL FIX: Added 'primary_col' to the sorting order to keep parent-child blocks bundled together securely
+                        sort_df = sort_df.sort_values(by=['p_rank', primary_col, 'is_summary', 'c_rank'], ascending=[False, True, False, False])
                         new_index = pd.MultiIndex.from_frame(sort_df[[primary_col, 'Detail']])
                         
                         return unstacked.reindex(new_index)
 
                     def create_hierarchical_val(df_source, primary_col, secondary_col, time_col):
-                        # 1. Master Rows (Store Totals)
-                        p = df_source.groupby([primary_col, time_col])[val_display_list].sum().reset_index()
-                        p['Detail'] = " SUMMARY"
-                        
-                        # 2. Detail Rows (Items inside Store)
-                        c = df_source.groupby([primary_col, secondary_col, time_col])[val_display_list].sum().reset_index().rename(columns={secondary_col: 'Detail'})
-                        
-                        # 3. Combine and Unstack
-                        combined = pd.concat([p, c]).set_index([primary_col, 'Detail', time_col])
-                        unstacked = combined.unstack(level=2).fillna(0)
-
-                        # 4. DYNAMIC TWO-TIER SORTING ENGINE (Profit Descending)
+                        # 1. Dynamically find the last month or week available in the data
                         month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
                         if time_col == "Month":
                             available_periods = [m for m in month_order if m in df_source[time_col].unique()]
                             last_period = available_periods[-1] if available_periods else df_source[time_col].max()
                         else:
                             last_period = sorted(df_source[time_col].astype(str).unique())[-1] if df_source[time_col].nunique() > 0 else df_source[time_col].max()
-                            
+
+                        # 2. Extract sorting order based on last period's Profit
                         df_last = df_source[df_source[time_col] == last_period]
                         if df_last.empty: df_last = df_source
                         
                         p_totals = df_last.groupby(primary_col)['Profit'].sum().to_dict()
                         c_totals = df_last.groupby([primary_col, secondary_col])['Profit'].sum().to_dict()
+
+                        p = df_source.groupby([primary_col, time_col])[val_display_list].sum().reset_index()
+                        p['Detail'] = " SUMMARY"
                         
+                        c = df_source.groupby([primary_col, secondary_col, time_col])[val_display_list].sum().reset_index().rename(columns={secondary_col: 'Detail'})
+                        
+                        combined = pd.concat([p, c]).set_index([primary_col, 'Detail', time_col])
+                        unstacked = combined.unstack(level=2).fillna(0)
+
+                        # Rebuild sorting structure
                         sort_df = pd.DataFrame(index=unstacked.index).reset_index()
                         sort_df['p_rank'] = sort_df[primary_col].map(p_totals).fillna(-999999)
                         sort_df['is_summary'] = np.where(sort_df['Detail'] == " SUMMARY", 1, 0)
                         sort_df['c_rank'] = sort_df.apply(lambda r: c_totals.get((r[primary_col], r['Detail']), -999999) if r['Detail'] != " SUMMARY" else float('inf'), axis=1)
                         
-                        # Sort by Parent Rank, keep Summary on top, then sort Child Details Rank
-                        sort_df = sort_df.sort_values(by=['p_rank', 'is_summary', 'c_rank'], ascending=[False, False, False])
+                        # CRITICAL FIX: Added 'primary_col' to the sorting order to keep parent-child blocks bundled together securely
+                        sort_df = sort_df.sort_values(by=['p_rank', primary_col, 'is_summary', 'c_rank'], ascending=[False, True, False, False])
                         new_index = pd.MultiIndex.from_frame(sort_df[[primary_col, 'Detail']])
                         
                         return unstacked.reindex(new_index)
