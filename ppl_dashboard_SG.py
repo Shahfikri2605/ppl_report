@@ -301,7 +301,14 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         sales_cols = {'Article': ['ITEM CODE'], 'Qty': ['QTY'], 'Val': ['SALES BEF GST'], 'Store': ['OUTLET'], 'Date': ['DATE'], 'Name': ['DESCRIPTION']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
-    
+
+    elif report_type == "SS DF":
+        db_cols = {'Article': ['CUST ITEM CODE'], 'NAV': ['NAV CODE'], 'ArtDesc': ['CUST DESCRIPTION'], 'NavDesc': ['NAV Description'], 'UOM': ['CUST UOM']}
+        sales_cols = {'Article': ['ITEM CODE'], 'Qty': ['QTY'], 'Val': ['SALES BEF GST'], 'Store': ['OUTLET'], 'Date': ['DATE'], 'Name': ['DESCRIPTION']}
+        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
+        waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
+        
+
     elif report_type == "NTUC":
         db_cols = {'Article': ['Customer Item code'], 'NAV': ['Nav Code'], 'ArtDesc': ['Customer Description'], 'NavDesc': ['Nav description'], 'UOM': ['UOM']}
         sales_cols = {'Article': ['item code'], 'Qty': ['quantity'], 'Val': ['sales'], 'Store': ['location code'], 'Date': ['date'], 'Name': ['description']}
@@ -528,7 +535,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             if code == "" or code == "0": return "UNKNOWN"
             return loc_map_ss_sales.get(code, f"UNMAPPED - {code}")
         df_sales['Store'] = df_sales['Store'].apply(map_ss_sales)
-    elif "NTUC" or "NTUC DF" in report_type:
+    elif "NTUC"  in report_type:
         def map_nt_sales(x):
             code = str(x).replace('.0', '').strip()
             if code == "" or code == "0": return "UNKNOWN"
@@ -559,7 +566,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.63
     elif report_type == 'SS':
         df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.76
-    elif report_type =='SS_DF':
+    elif report_type =='SS DF':
         df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.74
     else:
         df_sales['Val'] = df_sales['Val'].apply(clean_currency)
@@ -597,7 +604,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             df_sales['Year'] = df_sales['Date'].dt.year.astype('Int64').astype(str)
             df_sales['Month'] = df_sales['Date'].dt.month_name().str[:3]
             df_sales['Week'] = df_sales['Date'].apply(lambda x: f"{x.strftime('%Y')}-W{(int(x.strftime('%U')) + 1):02d}" if pd.notnull(x) else None)
-        elif report_type in ['SS']:
+        elif report_type in ['SS','SS DF']:
             df_sales['Date'] = pd.to_datetime(df_sales['Date'], format='%d-%m-%Y', errors='coerce')
             df_sales['Year'] = df_sales['Date'].dt.year.astype(str).str.replace(r'\.0$', '', regex=True)
             df_sales['Month'] = df_sales['Date'].dt.month_name().str[:3]
@@ -662,7 +669,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             
             df_dist = pd.concat([df_dist, df_dist2], ignore_index=True)
     if 'Store' in df_dist.columns:
-        if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','CS DF','SS','NTUC','NTUC DF']:
+        if report_type in ['AEON', 'AEON DF', 'TFP', 'TFP DF','CS','CS DF','SS','SS DF','NTUC','NTUC DF']:
             # Aeon now uses numeric codes, so we relax the text filtering here to avoid wiping data before mapping
             pass 
         # elif report_type == 'TFP' or report_type == 'TFP DF':
@@ -689,7 +696,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             if k not in master_name_map: master_name_map[k] = v
 
     # APPLY STORE MAPPINGS
-    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","CS DF","NTUC","SS","NTUC DF"]:
+    if report_type in ["AEON", "AEON DF", "TFP", "TFP DF","CS","CS DF","NTUC","SS","SS DF","NTUC DF"]:
         def map_nav(x):
             val = str(x).replace('.0', '').strip()
             if val == "" or val == "0" or val.upper() == "TRANSFER": return "UNKNOWN"
@@ -880,7 +887,7 @@ def main_app_interface(authenticator, name, permissions):
                     's': make_url(st.secrets["sheet_ids"]["ss_dry_sales"]),
                     'db': make_url(st.secrets["sheet_ids"]["ss_dry_db"]),
                     'd': make_url(st.secrets["sheet_ids"]["ss_dry_dist"]),
-                    'd2': make_url(st.secrets["sheet_ids"]["ss_dry_dist_2"]),
+                    # 'd2': make_url(st.secrets["sheet_ids"]["ss_dry_dist_2"]),
                     'w': make_url(st.secrets["sheet_ids"]["ss_dry_waste"]),
                     'h': make_url(st.secrets["sheet_ids"]["ss_dry_history"])  
                 }
@@ -921,7 +928,7 @@ def main_app_interface(authenticator, name, permissions):
                 r_loc = load_google_sheet(urls['db'], "3 - DATABASE LOCATION")
             elif rpt in ["CS","CS DF"]:
                 r_loc = load_google_sheet(urls['db'], "Location DB")
-            elif rpt in ["SS"]:
+            elif rpt in ["SS","SS DF"]:
                 r_loc = load_google_sheet(urls['db'], "DB LOCATION")
             elif rpt in ["NTUC","NTUC DF"]:
                 r_loc = load_google_sheet(urls['db'], "Location DB")
@@ -931,7 +938,7 @@ def main_app_interface(authenticator, name, permissions):
             r_w = None if rpt == "CS_DF" or rpt == "SS_DRY" else load_google_sheet(urls['w'])
 
             if r_s is not None and r_d is not None:
-                res = process_data(r_s, r_db, r_d, r_w, rpt, r_uom, r_d2, r_loc)
+                res = process_data(r_s, r_db, r_d, r_w, rpt, r_uom,r_d2, r_loc)
                 if res:
                     df_s, df_d, df_w, map_name, map_art, _, update_info = res
                     
