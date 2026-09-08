@@ -579,13 +579,13 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     elif report_type in ['TFP','TFP DF']:
         df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.75
     elif report_type =='CS':
-        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.73
+        df_sales['Val'] =(df_sales['Val'].apply(clean_currency)*0.73)*0.91 #comision 27% GST 9%
     elif report_type == 'CS DF':
-        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.7
+        df_sales['Val'] =(df_sales['Val'].apply(clean_currency)*0.7)*0.91
     elif report_type =='NTUC':
-        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.685
+        df_sales['Val'] =(df_sales['Val'].apply(clean_currency)*0.685)*0.91
     elif report_type=='NTUC DF':
-        df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.63
+        df_sales['Val'] =(df_sales['Val'].apply(clean_currency)*0.63)*0.91
     elif report_type == 'SS':
         df_sales['Val'] =df_sales['Val'].apply(clean_currency)*0.76
     elif report_type =='SS DF':
