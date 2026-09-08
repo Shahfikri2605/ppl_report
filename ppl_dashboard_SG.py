@@ -285,13 +285,13 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         waste_cols = {'NAV': ['NAV_CODE', 'NAV'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['CNO'], 'Val': ['TOT_AMT', 'Amount'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
     
     elif report_type == "CS" :
-        db_cols = {'Article': ['Cust Itemcode'], 'NAV': ['NAV CODE'], 'ArtDesc': ['Cust Description'], 'NavDesc': ['NAV Description'], 'UOM': ['Cust UOM']}
+        db_cols = {'Article': ['SKU Item code'], 'NAV': ['NAV CODE'], 'ArtDesc': ['Scan Sales Description'], 'NavDesc': ['NAV Description'], 'UOM': ['Cust UOM']}
         sales_cols ={'Article': ['ITEMCODE'], 'Qty': ['SALESQTY'], 'Val': ['SALESAMOUNT'], 'Store': ['STOREDESC'], 'Date': ['TRXDATE'], 'Name': ['ITEMDESC']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
 
     elif report_type == "CS DF":
-        db_cols = {'Article': ['Cust Itemcode'], 'NAV': ['NAV CODE'], 'ArtDesc': ['Cust Description'], 'NavDesc': ['NAV Description'], 'UOM': ['Cust UOM']}
+        db_cols = {'Article': ['SKU Item code'], 'NAV': ['NAV CODE'], 'ArtDesc': ['Scan Sales Description'], 'NavDesc': ['NAV Description'], 'UOM': ['Cust UOM']}
         sales_cols ={'Article': ['ITEMCODE'], 'Qty': ['SALESQTY'], 'Val': ['SALESAMOUNT'], 'Store': ['STOREDESC'], 'Date': ['TRXDATE'], 'Name': ['ITEMDESC']}
         dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['External Doc No.'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
@@ -366,7 +366,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             loc_sheet_cols = {'AeonCode': ['AEON CODE'], 'NavCode': ['NAV LOC CODE'], 'NavLoc': ['NAV LOC NAME']}
             sheet_title = "Loc"
         elif "CS" in report_type:
-            loc_sheet_cols = {'CsCode': ['Customer Location'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
+            loc_sheet_cols = {'CsCode': ['Cust Location Shortcode'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Customer Location']}
             sheet_title = "Location DB"
         elif "SS" in report_type:
             loc_sheet_cols = {'SsCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
@@ -393,10 +393,20 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
                     if ac and ac not in ["NAN", "NONE", ""]: loc_map_aeon_sales[ac] = nav_loc
                     if nc and nc not in ["NAN", "NONE", ""]: loc_map_nav[nc] = nav_loc
                 elif "CS" in report_type:
-                    cc = str(row.get('CsCode', '')).replace('.0', '').strip()
-                    nc = str(row.get('NavCode', '')).replace('.0', '').strip()
-                    if cc and cc not in ["NAN", "NONE", ""]: loc_map_cs_sales[cc] = nav_loc
-                    if nc and nc not in ["NAN", "NONE", ""]: loc_map_nav[nc] = nav_loc
+                    cc = str(row.get('CsCode', '')).replace('.0', '').strip().upper()
+                    nc = str(row.get('NavCode', '')).replace('.0', '').strip().upper()
+                    nl_clean = nav_loc.strip().upper()
+                    
+                    # Register all variations so map_nav() can catch them instantly
+                    if cc and cc not in ["NAN", "NONE", ""]: 
+                        loc_map_cs_sales[cc] = nav_loc
+                        loc_map_nav[cc] = nav_loc
+                    if nc and nc not in ["NAN", "NONE", ""]: 
+                        loc_map_cs_sales[nc] = nav_loc
+                        loc_map_nav[nc] = nav_loc
+                    if nl_clean and nl_clean not in ["NAN", "NONE", ""]:
+                        loc_map_cs_sales[nl_clean] = nav_loc
+                        loc_map_nav[nl_clean] = nav_loc
                 elif "SS" in report_type:
                     ss = str(row.get('SsCode', '')).replace('.0', '').strip()
                     nc = str(row.get('NavCode', '')).replace('.0', '').strip()
@@ -525,9 +535,21 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_sales['Store'] = df_sales['Store'].apply(map_aeon_sales)
     elif "CS" in report_type:
         def map_cs_sales(x):
-            code = str(x).replace('.0', '').strip()
-            if code == "" or code == "0": return "UNKNOWN"
-            return loc_map_cs_sales.get(code, f"UNMAPPED - {code}")
+            raw_val = str(x).replace('.0', '').strip()
+            val_upper = raw_val.upper()
+            if raw_val in ["", "0", "NAN", "NONE"]: 
+                return "UNKNOWN"
+            if val_upper in loc_map_cs_sales:
+                return loc_map_cs_sales[val_upper]
+            if raw_val in loc_map_cs_sales:
+                return loc_map_cs_sales[raw_val]
+            
+            # Fuzzy match fallback for strings containing store descriptions
+            clean_name = re.sub(r'^(CS|JS|MP)\s+', '', val_upper).strip()
+            for k, v in loc_map_cs_sales.items():
+                if clean_name and (clean_name in k or k in clean_name):
+                    return v
+            return f"UNMAPPED - {raw_val}"
         df_sales['Store'] = df_sales['Store'].apply(map_cs_sales)
     elif  "SS" in report_type:
         def map_ss_sales(x):
