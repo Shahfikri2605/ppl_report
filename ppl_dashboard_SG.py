@@ -366,7 +366,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             loc_sheet_cols = {'AeonCode': ['AEON CODE'], 'NavCode': ['NAV LOC CODE'], 'NavLoc': ['NAV LOC NAME']}
             sheet_title = "Loc"
         elif "CS" in report_type:
-            loc_sheet_cols = {'CsCode': ['Cust Location Shortcode'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Customer Location']}
+            loc_sheet_cols = {'CsCode': ['Cust Location Shortcode'], 'NavCode': ['Customer Location Name'], 'NavLoc': ['Usoft Location Name']}
             sheet_title = "Location DB"
         elif "SS" in report_type:
             loc_sheet_cols = {'SsCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
