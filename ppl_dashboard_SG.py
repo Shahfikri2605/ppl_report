@@ -393,20 +393,18 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
                     if ac and ac not in ["NAN", "NONE", ""]: loc_map_aeon_sales[ac] = nav_loc
                     if nc and nc not in ["NAN", "NONE", ""]: loc_map_nav[nc] = nav_loc
                 elif "CS" in report_type:
-                    cc = str(row.get('CsCode', '')).replace('.0', '').strip().upper()
-                    nc = str(row.get('NavCode', '')).replace('.0', '').strip().upper()
-                    nl_clean = nav_loc.strip().upper()
-                    
-                    # Register all variations so map_nav() can catch them instantly
-                    if cc and cc not in ["NAN", "NONE", ""]: 
-                        loc_map_cs_sales[cc] = nav_loc
-                        loc_map_nav[cc] = nav_loc
-                    if nc and nc not in ["NAN", "NONE", ""]: 
-                        loc_map_cs_sales[nc] = nav_loc
-                        loc_map_nav[nc] = nav_loc
-                    if nl_clean and nl_clean not in ["NAN", "NONE", ""]:
-                        loc_map_cs_sales[nl_clean] = nav_loc
-                        loc_map_nav[nl_clean] = nav_loc
+                  raw_c = str(row.get("Customer Location Name", row.get("NavCode", ""))).strip()
+                  cc = str(row.get("CsCode", "")).replace(".0", "").strip()
+                  nc = raw_c.replace(".0", "").strip()
+
+                  # Store both raw and uppercase variations for foolproof lookup
+                  for k in [cc, nc, nav_loc]:
+                    k_str = str(k).strip()
+                    if k_str and k_str.upper() not in ["NAN", "NONE", "", "0"]:
+                      loc_map_cs_sales[k_str] = nav_loc
+                      loc_map_cs_sales[k_str.upper()] = nav_loc
+                      loc_map_nav[k_str] = nav_loc
+                      loc_map_nav[k_str.upper()] = nav_loc
                 elif "SS" in report_type:
                     ss = str(row.get('SsCode', '')).replace('.0', '').strip()
                     nc = str(row.get('NavCode', '')).replace('.0', '').strip()
