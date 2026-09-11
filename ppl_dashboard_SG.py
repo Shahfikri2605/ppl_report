@@ -372,7 +372,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
             loc_sheet_cols = {'SsCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
             sheet_title = "DB LOCATION"
         elif "NTUC" or "NTUC DF" in report_type:
-            loc_sheet_cols = {'NtCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Usoft Location Name']}
+            loc_sheet_cols = {'NtCode': ['Customer Location Code'], 'NavCode': ['Usoft Location Code'], 'NavLoc': ['Customer Location Name']}
             sheet_title = "Location DB"
         else:
             # TFP pulls Loc (BBT), Code (3001), and Name
@@ -1060,9 +1060,9 @@ def main_app_interface(authenticator, name, permissions):
                     if rpt == 'AEON' or rpt == 'TFP':
                         df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG '))]
                     elif rpt == 'CS' or rpt =='SS' or rpt == 'NTUC':
-                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG '))]
+                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG ','FCS '))]
                     elif rpt == 'AEON DF' or rpt == 'TFP DF' or 'CS DF' or 'NTUC DF':
-                        mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG '))
+                        mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG ','FCS '))
                         mask_not_egg = ~df['Item_Name'].astype(str).str.upper().str.contains('SELENIUM EGG MYS PAPER TRAY', na=False)
                         df = df[mask_is_sn & mask_not_egg]
                     
