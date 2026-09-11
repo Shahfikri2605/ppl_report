@@ -287,7 +287,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     elif report_type == "CS" :
         db_cols = {'Article': ['SKU Item code'], 'NAV': ['NAV CODE'], 'ArtDesc': ['Scan Sales Description'], 'NavDesc': ['NAV Description'], 'UOM': ['Cust UOM']}
         sales_cols ={'Article': ['ITEMCODE'], 'Qty': ['SALESQTY'], 'Val': ['SALESAMOUNT'], 'Store': ['STOREDESC'], 'Date': ['TRXDATE'], 'Name': ['ITEMDESC']}
-        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
+        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['New Cost Price'], 'Date': ['Posting Date']}
         waste_cols = {'NAV': ['NAV', 'NAV_CODE'], 'Qty': ['QTY', 'Quantity'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
 
     elif report_type == "CS DF":
@@ -312,7 +312,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     elif report_type == "NTUC":
         db_cols = {'Article': ['Customer Item code'], 'NAV': ['Nav Code'], 'ArtDesc': ['Customer Description'], 'NavDesc': ['Nav description'], 'UOM': ['UOM']}
         sales_cols = {'Article': ['item code'], 'Qty': ['quantity'], 'Val': ['sales'], 'Store': ['location code'], 'Date': ['date'], 'Name': ['description']}
-        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['Price','COST','Unit Price'], 'Date': ['Posting Date']}
+        dist_cols = {'NAV': ['No.', 'M Code'], 'Qty': ['Quantity', 'QTY'], 'Store': ['Your Reference'], 'UOM': ['Unit of Measure Code'], 'Name': ['USOFT product description'], 'Cost': ['New Cost Price'], 'Date': ['Posting Date']}
         waste_cols = {'NAV': ['NAV_CODE'], 'Qty': ['QTY'], 'Weight': ['WEIGHT'], 'Store': ['LONG_NAME'], 'Val': ['Amount', 'TOT_AMT'], 'Date': ['DATE', 'Date'], 'Chain': ['MAIN_CODE']}
     
     elif report_type == "NTUC DF":
@@ -656,9 +656,12 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
     df_dist = strict_rename(df_dist, dist_cols)
 
     if 'Date' in df_dist.columns:
-        df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce', dayfirst=False)
-        # SAVE THIS EXCLUSIVELY FOR THE SIDEBAR CAPTION LOGIC Later:
-        df_dist_raw_date_max = df_dist['Date'].max().strftime('%d %b %Y') if not df_dist['Date'].dropna().empty else "N/A"
+        # NTUC Fresh uses MM/DD/YYYY (dayfirst=False); CS, AEON, TFP, SS use DD/MM/YYYY (dayfirst=True)
+        is_true = report_type in ("NTUC DF","CS DF")
+        df_dist['Date'] = pd.to_datetime(df_dist['Date'], dayfirst=not is_true, errors='coerce')
+        
+        valid_dist_dates = df_dist['Date'].dropna()
+        df_dist_raw_date_max = valid_dist_dates.max().strftime('%d %b %Y') if not valid_dist_dates.empty else "N/A"
 
     if df_dist2_raw is not None and not df_dist2_raw.empty:
         dist2_cols = {
@@ -725,7 +728,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         df_dist['Store'] = df_dist['Store'].apply(map_nav)
 
     df_dist['Date'] = pd.to_datetime(df_dist['Date'], errors='coerce')
-    df_dist['Year'] = df_dist['Date'].dt.year.astype(str).str.replace(r'\.0$', '', regex=True)
+    df_dist['Year'] = df_dist['Date'].dt.year.astype('Int64').astype(str).str.replace(r'\.0$', '', regex=True)
     df_dist['Month'] = df_dist['Date'].dt.month_name().str[:3]
     df_dist['Week'] = df_dist['Date'].apply(lambda x: f"{x.strftime('%Y')}-W{(int(x.strftime('%U')) + 1):02d}" if pd.notnull(x) else None)
     df_dist['Qty'] = df_dist['Qty'].apply(clean_currency)
@@ -1059,7 +1062,7 @@ def main_app_interface(authenticator, name, permissions):
                     elif rpt == 'CS' or rpt =='SS' or rpt == 'NTUC':
                         df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML"))]
                     elif rpt == 'AEON DF' or rpt == 'TFP DF' or 'CS DF' or 'NTUC DF':
-                        mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML"))
+                        mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG '))
                         mask_not_egg = ~df['Item_Name'].astype(str).str.upper().str.contains('SELENIUM EGG MYS PAPER TRAY', na=False)
                         df = df[mask_is_sn & mask_not_egg]
                     
