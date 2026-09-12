@@ -744,7 +744,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
         uom_factor = df_dist['UOM'].apply(parse_uom_factor)
         df_dist['Qty'] = raw_qty * uom_factor 
         cost = df_dist['Cost'].apply(clean_currency) if 'Cost' in df_dist.columns else 0
-        df_dist['Val'] = df_dist['Qty_1'] * (cost/2)
+        df_dist['Val'] = df_dist['Qty_1'] * (cost)
         
     
 
