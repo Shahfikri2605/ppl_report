@@ -657,7 +657,7 @@ def process_data(df_sales_raw, df_db_raw, df_dist_raw, df_waste_raw, report_type
 
     if 'Date' in df_dist.columns:
         # NTUC Fresh uses MM/DD/YYYY (dayfirst=False); CS, AEON, TFP, SS use DD/MM/YYYY (dayfirst=True)
-        is_true = report_type in ("NTUC DF","CS DF")
+        is_true = report_type in ("NTUC DF")
         df_dist['Date'] = pd.to_datetime(df_dist['Date'], dayfirst=not is_true, errors='coerce')
         
         valid_dist_dates = df_dist['Date'].dropna()
@@ -1060,9 +1060,9 @@ def main_app_interface(authenticator, name, permissions):
                     if rpt == 'AEON' or rpt == 'TFP':
                         df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG '))]
                     elif rpt == 'CS' or rpt =='SS' or rpt == 'NTUC':
-                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG ','FCS '))]
+                        df = df[~df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG ','FCS ','CTN - '))]
                     elif rpt == 'AEON DF' or rpt == 'TFP DF' or 'CS DF' or 'NTUC DF':
-                        mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG ','FCS '))
+                        mask_is_sn = df['Item_Name'].astype(str).str.upper().str.startswith(('SN ','SNBG ','SIMPLY ','BETTER ','* ORGANIC DRIED DATES 250G','* ORGANIC DRIED GOJIBERRIES 200G','TRULY ','* ORGANIC DRIED CRANBERRIES 220G',"FAIRCHILD'S ORG APP CIDER VINEGAR 946ML",'TRG ','FCS ','CTN - '))
                         mask_not_egg = ~df['Item_Name'].astype(str).str.upper().str.contains('SELENIUM EGG MYS PAPER TRAY', na=False)
                         df = df[mask_is_sn & mask_not_egg]
                     
